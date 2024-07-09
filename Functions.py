@@ -36,15 +36,15 @@ class MeanAbsoluteLogError(nn.Module):
     def __init__(self):
         super(MeanAbsoluteLogError, self).__init__()
 
-    def forward(self, preds, targets):
-        return np.mean(np.abs(np.log(preds) - np.log(targets)))
+    def forward(self, preds, actuals):
+        return np.mean(np.abs(np.log(preds) - np.log(actuals)))
     
 class MeanSquaredLogError(nn.Module):
     def __init__(self):
         super(MeanSquaredLogError, self).__init__()
 
-    def forward(self, preds, targets):
-        return np.mean(np.square(np.log(preds) - np.log(targets)))
+    def forward(self, preds, actuals):
+        return np.mean(np.square(np.log(preds) - np.log(actuals)))
 
 ### MODEL CLASSES #############################################################
 
@@ -59,7 +59,7 @@ class ClaimsDataset(Dataset):
     def __init__(self, target_col, index_path, set_path, version_no=1, 
                  include_incurreds=True):
         self.target_col = target_col # string referring to name of 
-        # target column (i.e. 'target', 'log_m')
+        # target column (i.e. 'claim_size', 'log_m')
         self.index = pd.read_csv(index_path) 
         self.set = pd.read_csv(set_path)
         self.version_no = version_no # either 1, 2 or 3
@@ -83,7 +83,9 @@ class ClaimsDataset(Dataset):
 
         # Get relevant info from index.csv file
         target = self.index[self.target_col][index]
+        claim_size = self.index['claim_size'][index]
         latest_incurred = self.index['latest_incurred'][index]
+        true_ocl = self.index['true_ocl'][index]
 
         nrows = df[(df['dev_time']!=0)\
                 | (df['cal_time']!=0)\
@@ -101,8 +103,8 @@ class ClaimsDataset(Dataset):
 
             # Return padded data
             return (torch.nn.functional.pad(databox.float(), (0,0,0,40-nrows)), 
-                    target, latest_incurred, real_index, claim_no, pred_time, 
-                    nrows)
+                    target, claim_size, latest_incurred, true_ocl, real_index, 
+                    claim_no, pred_time, nrows)
 
         elif self.version_no == 2:
             if self.include_incurreds:
@@ -117,8 +119,8 @@ class ClaimsDataset(Dataset):
 
             # Return padded data
             return (torch.nn.functional.pad(databox.float(), (0,0,0,40-nrows)), 
-                    target, latest_incurred, real_index, claim_no, pred_time, 
-                    nrows)
+                    target, claim_size, latest_incurred, true_ocl, real_index, 
+                    claim_no, pred_time, nrows)
 
         elif self.version_no == 3:
             num_payments = self.index['num_payments'][index]
@@ -140,10 +142,11 @@ class ClaimsDataset(Dataset):
                                            'multiplier']].values)
 
             # Return padded data
-            return (torch.nn.functional.pad(databox.float(), (0,0,0,40-nrows)), 
-                    target, latest_incurred, real_index, claim_no, pred_time, 
-                    nrows, num_payments, mean_payments, var_payments, 
-                    max_payment, num_revisions, num_upward, total_variation)
+            return (torch.nn.functional.pad(databox.float(), (0,0,0,40-nrows)),  
+                    target, claim_size, latest_incurred, true_ocl, real_index, 
+                    claim_no, pred_time, nrows, num_payments, mean_payments, 
+                    var_payments, max_payment, num_revisions, num_upward, 
+                    total_variation)
 
         else:
             raise ValueError('version_no must be 1, 2 or 3')
@@ -167,7 +170,8 @@ class ClaimsRNN(nn.Module):
         # nonLinearity only used in vanilla RNN
         self.output_layer = output_layer # either 'linear' or 'exponential'
         self.dropout = dropout # float between 0 and 1
-        self.include_incurreds = include_incurreds # needs to match 
+        self.include_incurreds = include_incurreds # needs to match ClaimsDataset
+        self.relu = nn.ReLU() # used for feed-forward hidden layer, should change this so different activation functions can be specified
         # include_incurreds variable in ClaimsDataset
 
         # nFeatures is the number of features to be input into the RNN layer
@@ -200,13 +204,15 @@ class ClaimsRNN(nn.Module):
         else:
             raise ValueError("type must be 'RNN', 'LSTM' or 'GRU'")
 
-
         if version_no == 3:
-            # +7 becuase we are adding 7 derived features into the fc layer
-            self.fc = nn.Linear(nHidden + 7, nOut) 
+            # +8 becuase we are adding 7 derived features into the fc layer + 1 for pred time
+            self.fc1 = nn.Linear(nHidden + 8, nHidden // 2) 
 
         else:
-            self.fc = nn.Linear(nHidden, nOut)
+            # +1 for pred time
+            self.fc1 = nn.Linear(nHidden + 1, nHidden // 2)
+
+        self.fc2 = nn.Linear(nHidden // 2, nOut)
 
 
     def forward(self, x):
@@ -224,25 +230,28 @@ class ClaimsRNN(nn.Module):
 
             # Concatenating the extra features
             out = torch.cat((ht[-1,:,:], 
-                             x[1], x[2], x[3], x[4], x[5], x[6], x[7]), 1)
+                             x[1], x[2], x[3], x[4], x[5], x[6], x[7], x[8]), 1)
 
             # Layer normalisation to ensure derived features have
             # similar scale to RNN outputs
             layer_norm = nn.LayerNorm(out.size()).to(device)
             out = layer_norm(out)
 
-            out = self.fc(out)
-
-
         else:
             # x will be the packed datapoints
-            out, ht = self.rnn(x)
+            out, ht = self.rnn(x[0])
 
             if self.type == 'LSTM':
-                out = self.fc(ht[0][-1,:,:])
+                ht = ht[0]
 
-            else:
-                out = self.fc(ht[-1,:,:])
+            out = torch.cat((ht[-1,:,:], x[1]), 1)
+
+        out = self.fc1(out)
+
+        # non-linear activation for feed-forward hidden layer
+        out = self.relu(out)
+
+        out = self.fc2(out)
 
         if self.output_layer == 'exponential':
             out = torch.exp(out)
@@ -251,10 +260,8 @@ class ClaimsRNN(nn.Module):
 
 ### TRAINING/TESTING FUNCTIONS ################################################
 
-def train_network(model, train_data, epochs, batch_size, optimiser, 
-                  criterion=torch.nn.L1Loss(), version_no=1, verbose=True, 
-                  val_data=None, patience=10, cv_loss_list=None, 
-                  cv_vsInc_list=None, cv_uie_list=None):
+def train_network(model, train_data, hp_comb, optimiser, verbose=True, 
+                  val_data=None, cv_loss_list=None, cv_vsInc_list=None, cv_uie_list=None):
     
     """
     Args:
@@ -286,24 +293,26 @@ def train_network(model, train_data, epochs, batch_size, optimiser,
 
     # Data loader
     trainloader = torch.utils.data.DataLoader(dataset=train_data, 
-                                              batch_size=batch_size, 
+                                              batch_size=hp_comb['batch_size'], 
                                               shuffle=True, drop_last=True)
 
     # Train the model
-    for epoch in range(epochs):
+    for epoch in range(hp_comb['epochs']):
         total_loss = 0
         total_datapoints = 0
         total_vsInc = 0
         total_uie = 0
+        total_weighted_vsinc = 0
+        total_observation_sizes = 0
 
         for batch in trainloader:
 
             # extract batch data
-            if version_no == 3:
-                (datapoints, targets, latest_incurreds, indexes, claim_nos, 
-                 pred_times, nrowss, num_paymentss, mean_paymentss, 
-                 var_paymentss, max_payments, num_revisionss, num_upwards, 
-                 total_variations) = batch
+            if hp_comb['version_no'] == 3:
+                (datapoints, targets, claim_sizes, latest_incurreds, true_ocls,
+                 indexes, claim_nos, pred_times, nrowss, num_paymentss, 
+                 mean_paymentss, var_paymentss, max_payments, num_revisionss, 
+                 num_upwards, total_variations) = batch
 
                 num_paymentss = num_paymentss.unsqueeze(1).to(device).float()
                 mean_paymentss = mean_paymentss.unsqueeze(1).to(device).float()
@@ -314,45 +323,55 @@ def train_network(model, train_data, epochs, batch_size, optimiser,
                 total_variations=total_variations.unsqueeze(1).to(device).float()
 
             else:
-                (datapoints, targets, latest_incurreds, indexes, claim_nos, 
-                 pred_times, nrowss) = batch
+                (datapoints, targets, claim_sizes, latest_incurreds, true_ocls,
+                 indexes, claim_nos, pred_times, nrowss) = batch
                 
             datapoints = datapoints.to(device).float()
             targets = targets.to(device).float()
+            claim_sizes = claim_sizes.to(device).float()
             latest_incurreds = latest_incurreds.to(device).float()
-            pred_times = pred_times.to(device).float()
+            true_ocls = true_ocls.to(device).float()
+            pred_times = pred_times.unsqueeze(1).to(device).float()
 
             packed = pack_padded_sequence(datapoints, nrowss, 
                                           enforce_sorted=False, 
                                           batch_first=True)
 
-            if version_no == 3:
+            if hp_comb['version_no'] == 3:
                 # create a tuple with packed and the extra features
-                packed_extra = (packed, num_paymentss, mean_paymentss, 
-                                var_paymentss, max_payments, num_revisionss, 
-                                num_upwards, total_variations)
-
-                raw_preds = model(packed_extra)
+                packed_extra = (packed, pred_times, num_paymentss, 
+                                mean_paymentss, var_paymentss, max_payments, 
+                                num_revisionss, num_upwards, total_variations)
 
             else:
-                raw_preds = model(packed)  
+                packed_extra = (packed, pred_times)  
                 
+            raw_preds = model(packed_extra)    
             raw_preds = raw_preds.reshape(raw_preds.shape[0])
 
-            if train_data.target_col == 'target':
+            # converting raw preds and targets to be in terms of ultimate claim size
+            if train_data.target_col == 'claim_size':
                 preds = raw_preds
                 ultimates = targets
             
             elif train_data.target_col == 'log_m':
                 preds = torch.exp(raw_preds) * latest_incurreds
                 ultimates = torch.exp(targets) * latest_incurreds
+            
+            elif train_data.target_col == 'true_ocl':
+                preds = raw_preds + claim_sizes - true_ocls
+                ultimates = targets + claim_sizes - true_ocls
+
+            elif train_data.target_col == 'log_true_ocl':
+                preds = torch.exp(raw_preds) + claim_sizes - true_ocls
+                ultimates = torch.exp(targets) + claim_sizes - true_ocls
 
             else:
-                ValueError('Invalid target, must be "target" or "log_m"')
+                ValueError('Invalid target, must be "claim_size", "log_m", "true_ocl" or "log_true_ocl"')
 
 
             # Loss and gradient descent
-            loss = criterion(raw_preds, targets)
+            loss = hp_comb['criterion'](raw_preds, targets)
             optimiser.zero_grad()
             loss.backward() # Calculate gradients
             optimiser.step() # Update weights
@@ -363,6 +382,11 @@ def train_network(model, train_data, epochs, batch_size, optimiser,
             total_vsInc += sum(torch.abs((ultimates-preds)) < 
                                torch.abs((ultimates-latest_incurreds)))
             
+            total_weighted_vsinc += sum(ultimates * (torch.abs((ultimates-preds)) < 
+                                        torch.abs((ultimates-latest_incurreds))))
+            
+            total_observation_sizes += sum(ultimates)
+            
             total_uie+=sum(torch.logical_and((preds < latest_incurreds), 
                                              (torch.abs((ultimates-preds)) > 
                                               torch.abs((ultimates-
@@ -372,11 +396,14 @@ def train_network(model, train_data, epochs, batch_size, optimiser,
         vs_incurred_accuracy = total_vsInc / total_datapoints * 100
         uie = total_uie / total_datapoints * 100
         total_loss = total_loss / total_datapoints
+        weighted_vsinc = total_weighted_vsinc / total_observation_sizes * 100
 
         if verbose:
             print(f'Epoch {epoch}: '
                   f'training loss = {round_threshold(total_loss):,}, '
-                  f'vsInc = {vs_incurred_accuracy:.2f}%, UIE = {uie:.2f}%')
+                  f'vsInc = {vs_incurred_accuracy:.2f}%, '
+                  f'weighted vsInc = {weighted_vsinc:.2f}%, '
+                  f'UIE = {uie:.2f}%')
 
         # Validation
         if val_data:
@@ -384,8 +411,7 @@ def train_network(model, train_data, epochs, batch_size, optimiser,
             if verbose:
                 print('Validation')
                 
-            test_network(model, val_data, batch_size, criterion, 
-                         version_no=version_no, val_loss_list=val_loss_list, 
+            test_network(model, val_data, hp_comb, val_loss_list=val_loss_list, 
                          val_vsInc_list=val_vsInc_list, 
                          val_uie_list=val_uie_list, verbose=verbose)
 
@@ -400,7 +426,7 @@ def train_network(model, train_data, epochs, batch_size, optimiser,
             else:
                 patience_counter += 1
 
-            if patience_counter == patience:
+            if patience_counter == hp_comb['patience']:
                 model.load_state_dict(best_weights)
                 if cv_loss_list is not None:
                     cv_loss_list.append(best_val_loss)
@@ -419,7 +445,7 @@ def train_network(model, train_data, epochs, batch_size, optimiser,
                 break
 
     # if we reach max number of epochs, save the best weights
-    if ((epoch == epochs - 1) and 
+    if ((epoch == hp_comb['epochs'] - 1) and 
         (val_data is not None) and 
         (cv_loss_list is not None) and 
         (cv_vsInc_list is not None)):
@@ -435,8 +461,7 @@ def train_network(model, train_data, epochs, batch_size, optimiser,
                   f'vsInc = {best_val_vsInc:.2f}%, '
                   f'UIE = {best_val_uie:.2f}%\n')
             
-def test_network(model, test_data, batch_size, criterion=torch.nn.L1Loss(), 
-                 preds_list=None, version_no=1, verbose=True, 
+def test_network(model, test_data, hp_comb, preds_list=None, verbose=True, 
                  val_loss_list=None, val_vsInc_list=None, val_uie_list=None):
     
     """Args:
@@ -447,22 +472,24 @@ def test_network(model, test_data, batch_size, criterion=torch.nn.L1Loss(),
 
     # Data loader
     test_loader = torch.utils.data.DataLoader(dataset=test_data, 
-                                              batch_size=batch_size, 
+                                              batch_size=hp_comb['batch_size'], 
                                               shuffle=False)
 
     total_loss = 0
     total_datapoints = 0
     total_vsInc = 0
     total_uie = 0
+    total_weighted_vsinc = 0
+    total_observation_sizes = 0
 
     # Test the model
     with torch.no_grad():
         for batch in test_loader:
-            if version_no == 3:
-                (datapoints, targets, latest_incurreds, indexes, claim_nos, 
-                 pred_times, nrowss, num_paymentss, mean_paymentss, 
-                 var_paymentss, max_payments, num_revisionss, num_upwards, 
-                 total_variations) = batch
+            if hp_comb['version_no'] == 3:
+                (datapoints, targets, claim_sizes, latest_incurreds, true_ocls, 
+                 indexes, claim_nos, pred_times, nrowss, num_paymentss, 
+                 mean_paymentss, var_paymentss, max_payments, num_revisionss, 
+                 num_upwards, total_variations) = batch
 
                 num_paymentss = num_paymentss.unsqueeze(1).to(device).float()
                 mean_paymentss = mean_paymentss.unsqueeze(1).to(device).float()
@@ -473,32 +500,33 @@ def test_network(model, test_data, batch_size, criterion=torch.nn.L1Loss(),
                 total_variations = total_variations.unsqueeze(1).to(device).float()
 
             else:
-                (datapoints, targets, latest_incurreds, indexes, claim_nos, 
-                 pred_times, nrowss) = batch
+                (datapoints, targets, claim_sizes, latest_incurreds, true_ocls, 
+                 indexes, claim_nos, pred_times, nrowss) = batch
 
             datapoints = datapoints.to(device).float()
             targets = targets.to(device).float()
+            claim_sizes = claim_sizes.to(device).float()
             latest_incurreds = latest_incurreds.to(device).float()
-            pred_times = pred_times.to(device).float()
+            true_ocls = true_ocls.to(device).float()
+            pred_times = pred_times.unsqueeze(1).to(device).float()
 
             packed = pack_padded_sequence(datapoints, nrowss, 
                                           enforce_sorted=False, 
                                           batch_first=True)
 
-            if version_no == 3:
+            if hp_comb['version_no'] == 3:
                 # create a tuple with packed and the extra features
-                packed_extra = (packed, num_paymentss, mean_paymentss, 
-                                var_paymentss, max_payments, num_revisionss, 
-                                num_upwards, total_variations)
-
-                raw_preds = model(packed_extra)
+                packed_extra = (packed, pred_times, num_paymentss, 
+                                mean_paymentss, var_paymentss, max_payments, 
+                                num_revisionss, num_upwards, total_variations)
 
             else:
-                raw_preds = model(packed)
+                packed_extra = (packed, pred_times)
 
+            raw_preds = model(packed_extra)
             raw_preds = raw_preds.reshape(raw_preds.shape[0])
 
-            if test_data.target_col == 'target':
+            if test_data.target_col == 'claim_size':
                 preds = raw_preds
                 ultimates = targets
             
@@ -506,18 +534,31 @@ def test_network(model, test_data, batch_size, criterion=torch.nn.L1Loss(),
                 preds = torch.exp(raw_preds) * latest_incurreds
                 ultimates = torch.exp(targets) * latest_incurreds
 
+            elif test_data.target_col == 'true_ocl':
+                preds = raw_preds + claim_sizes - true_ocls
+                ultimates = targets + claim_sizes - true_ocls
+
+            elif test_data.target_col == 'log_true_ocl':
+                preds = torch.exp(raw_preds) + claim_sizes - true_ocls
+                ultimates = torch.exp(targets) + claim_sizes - true_ocls
+
             else:
-                ValueError('Invalid target column')
+                ValueError('Invalid target, must be "claim_size", "log_m", "true_ocl" or "log_true_ocl"')
 
 
             # Loss and gradient descent
-            loss = criterion(raw_preds, targets)
+            loss = hp_comb['criterion'](raw_preds, targets)
 
             # Track statistics
             total_loss += loss.item() * preds.size(0)
             total_datapoints += preds.size(0)
             total_vsInc += sum(torch.abs((ultimates-preds)) < 
                                torch.abs((ultimates-latest_incurreds)))
+            
+            total_weighted_vsinc += sum(ultimates * (torch.abs((ultimates-preds)) < 
+                                        torch.abs((ultimates-latest_incurreds))))
+            
+            total_observation_sizes += sum(ultimates)
             
             total_uie+=sum(torch.logical_and((preds < latest_incurreds), 
                                              (torch.abs((ultimates-preds)) > 
@@ -531,10 +572,13 @@ def test_network(model, test_data, batch_size, criterion=torch.nn.L1Loss(),
         vs_incurred_accuracy = total_vsInc / total_datapoints * 100
         uie = total_uie / total_datapoints * 100
         total_loss = total_loss / total_datapoints
+        weighted_vsinc = total_weighted_vsinc / total_observation_sizes * 100
 
         if verbose:
             print(f'loss = {round_threshold(total_loss):,}, '
-                  f'vsInc = {vs_incurred_accuracy:.2f}%, UIE = {uie:.2f}%')
+                  f'vsInc = {vs_incurred_accuracy:.2f}%, '
+                  f'weighted vsInc = {weighted_vsinc:.2f}%, '
+                  f'UIE = {uie:.2f}%')
 
         if isinstance(val_loss_list, list):
             val_loss_list.append(total_loss)
@@ -561,7 +605,11 @@ def get_heatmap(actuals, preds, nbins):
 
 def get_losses(actuals, preds, incurreds):
     '''Computes and prints the MALE and MSLE for the model's predictions and 
-    the case estimates'''
+    the case estimates.
+    
+    The losses will be calculated using ultimate claim size for 'claim_size' 
+    and 'log_m' targets, and true ocl for 'true_ocl' and 'log_true_ocl' targets.'''
+
     preds_male = MeanAbsoluteLogError()(preds, actuals)
     preds_msle = MeanSquaredLogError()(preds, actuals)
 
@@ -579,7 +627,9 @@ def get_weighted_vsInc(actuals, preds, incurreds):
                             np.abs((actuals-incurreds)), weights=actuals)
 
 def get_preds_actuals(model, test_data, param_dict, verbose=False):
-    '''Args:
+    '''Note: 'actuals' refers to the ultimate claim size
+    
+        Args:
          model: the trained model
          test_data: the test dataset
          param_dict: dictionary of parameters used in the model
@@ -592,13 +642,11 @@ def get_preds_actuals(model, test_data, param_dict, verbose=False):
     
     preds_list = []
 
-    test_network(model, test_data, batch_size=param_dict['batch_size'], 
-                 criterion=param_dict['criterion'], preds_list=preds_list, 
-                 version_no=param_dict['version_no'], verbose=verbose, 
+    test_network(model, test_data, param_dict, preds_list=preds_list, verbose=verbose, 
                  val_loss_list=None, val_vsInc_list=None, val_uie_list=None)
 
     preds_list = pd.Series(preds_list)
-    actuals_list = test_data.index["target"]
+    actuals_list = test_data.index["claim_size"]
     incurreds_list = test_data.index["latest_incurred"]
 
     return actuals_list, preds_list, incurreds_list
@@ -892,13 +940,13 @@ def analyse_model(model, dataset, hp_comb,
     get_heatmap(small_actuals, small_preds, nbins=30)
     get_close_far(small_actuals, small_preds, small_incurreds)
 
-    aggregate_by_time(dataset.index.loc[dataset.index['target'] < 
+    aggregate_by_time(dataset.index.loc[dataset.index['claim_size'] < 
                                         small_threshold,], small_actuals, 
                                                            small_preds, 
                                                            small_incurreds, 
                                                            'pred_time')
     
-    aggregate_by_time(dataset.index.loc[dataset.index['target'] < 
+    aggregate_by_time(dataset.index.loc[dataset.index['claim_size'] < 
                                         small_threshold,], small_actuals, 
                                                            small_preds, 
                                                            small_incurreds, 
@@ -920,13 +968,13 @@ def analyse_model(model, dataset, hp_comb,
     get_close_far(medium_actuals, medium_preds, medium_incurreds)
 
     aggregate_by_time(
-        dataset.index.loc[(dataset.index['target'] > small_threshold) & 
-                          (dataset.index['target'] < large_threshold),], 
+        dataset.index.loc[(dataset.index['claim_size'] > small_threshold) & 
+                          (dataset.index['claim_size'] < large_threshold),], 
         medium_actuals, medium_preds, medium_incurreds, 'pred_time')
     
     aggregate_by_time(
-        dataset.index.loc[(dataset.index['target'] > small_threshold) & 
-                          (dataset.index['target'] < large_threshold),], 
+        dataset.index.loc[(dataset.index['claim_size'] > small_threshold) & 
+                          (dataset.index['claim_size'] < large_threshold),], 
         medium_actuals, medium_preds, medium_incurreds, 'dev_quarter')
 
     print('Large')
@@ -944,10 +992,10 @@ def analyse_model(model, dataset, hp_comb,
     get_heatmap(large_actuals, large_preds,nbins=30)
     get_close_far(large_actuals, large_preds, large_incurreds)
 
-    aggregate_by_time(dataset.index[dataset.index['target'] > large_threshold], 
+    aggregate_by_time(dataset.index[dataset.index['claim_size'] > large_threshold], 
                       large_actuals, large_preds, large_incurreds, 'pred_time')
     
-    aggregate_by_time(dataset.index[dataset.index['target'] > large_threshold], 
+    aggregate_by_time(dataset.index[dataset.index['claim_size'] > large_threshold], 
                       large_actuals, large_preds, large_incurreds, 'dev_quarter')
 
 
@@ -1021,7 +1069,7 @@ def cross_validate(fp_in, fp_out, hyperparameter_grid, verbose=True):
 
     NOTE: do not change loss function within 1 run of this function becuase 
           the loss numbers will be on a different scale.
-    Same with switching from 'target' to 'log_m'
+    Same with switching from 'claim_size' to 'log_m'
     """
 
     best_val_loss = np.Inf
@@ -1063,11 +1111,8 @@ def cross_validate(fp_in, fp_out, hyperparameter_grid, verbose=True):
         
         optimiser = optim.Adam(model.parameters(), lr=hp_comb['lr'])
 
-        train_network(model, train_set, hp_comb['epochs'], 
-                      hp_comb['batch_size'], optimiser, hp_comb['criterion'], 
-                      hp_comb['version_no'], verbose, val_set, 
-                      hp_comb['patience'], cv_loss_list, cv_vsInc_list, 
-                      cv_uie_list)
+        train_network(model, train_set, hp_comb, optimiser, verbose, val_set, 
+                      cv_loss_list, cv_vsInc_list, cv_uie_list)
         
         cv_loss = np.mean(cv_loss_list)
         cv_vsInc = np.mean(cv_vsInc_list)
@@ -1121,7 +1166,7 @@ def cross_validate(fp_in, fp_out, hyperparameter_grid, verbose=True):
                       best_hp_comb['normalisation'], best_hp_comb['include_incurreds']).to(device)
     
     model.load_state_dict(best_weights)
-    analyse_model(model, val_set, hp_comb)
+    analyse_model(model, val_set, best_hp_comb)
 
     return best_hp_comb
 
@@ -1177,10 +1222,7 @@ def final_test(fp_in, fp_out, hp_comb, iterations, verbose=True,
             
             optimiser = optim.Adam(model.parameters(), lr=hp_comb['lr'])
 
-            train_network(model, train_set, hp_comb['epochs'], 
-                          hp_comb['batch_size'], optimiser, 
-                          hp_comb['criterion'], hp_comb['version_no'], 
-                          verbose, val_set, hp_comb['patience'])
+            train_network(model, train_set, hp_comb, optimiser, verbose, val_set)
             
             if verbose:
                 print('Test:')
@@ -1203,7 +1245,7 @@ def final_test(fp_in, fp_out, hp_comb, iterations, verbose=True,
     # Skips training and uses the predictions already stored in the csv file
     elif pretrained == True:
         preds_matrix = pd.read_csv(fp_out, header=None).to_numpy()
-        actuals = test_set.index["target"]
+        actuals = test_set.index["claim_size"]
         incurreds = test_set.index["latest_incurred"]
 
         vsInc_list = np.array([get_vsInc(actuals, preds, incurreds) 
@@ -1330,7 +1372,7 @@ def plot_claim(preds_list, data, claim_no):
     claim_index = data.index[data.index['index'].isin(claim_data['index'])]
 
     # Get the ultimate claim size
-    ultimate = claim_index['target'].values[0]
+    ultimate = claim_index['claim_size'].values[0]
 
     # Get the times and incurred values
     latest_index_data = claim_data.loc[claim_data['index'] == 

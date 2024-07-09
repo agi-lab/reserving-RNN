@@ -8,7 +8,7 @@
 #pandas 2.1.1
 #numpy 1.26.0
 
-#Takes simulated SPLICE output from R, converts it into a 'set' and 'index' 
+# Takes simulated SPLICE output from R, converts it into a 'set' and 'index' 
 # csv file, splits into training and test sets and stores them in csvs
 
 #For each R output, creates files of versions V1 (cal_time, dev_time, cumpaid, 
@@ -23,6 +23,7 @@
 import pandas as pd
 import numpy as np
 from random import sample, seed
+import pathlib
 
 ### FILEPATHS (ADJUST THESE BEFORE RUNNING) ###################################
 
@@ -108,7 +109,7 @@ def get_finalised_quarter(row):
 # Reading data
 data = pd.read_csv(fp_in)
 
-data.head()
+#data.head()
 
 # Dropping first column
 data = data.iloc[:, 1:]
@@ -127,24 +128,6 @@ data['payments'] = payments
 
 # Adding finalisation time to old dataframe
 data['finalised_quarter'] = np.ceil(data.apply(get_finalised_quarter, axis = 1))
-
-
-# testing
-'''data['finalised_quarter'].max()
-
-plt.hist(data['finalised_quarter'])
-plt.show()
-
-plt.hist(data.groupby('claim_no').last()['finalised_quarter'])
-plt.show()
-
-print(f"# Claims finalised after quarter 48: {sum(data.groupby('claim_no').last()['finalised_quarter'] > 48)}")
-print(f"# Claims finalised before and including quarter 48: {sum(data.groupby('claim_no').last()['finalised_quarter'] <= 48)}")
-
-print(f" prop Claims finalised after quarter 48: {np.mean(data.groupby('claim_no').last()['finalised_quarter'] > 48)}")
-print(f" prop Claims finalised between quarters 40 and 48: {np.mean((data.groupby('claim_no').last()['finalised_quarter'] > 40) & (data.groupby('claim_no').last()['finalised_quarter'] <= 48))}")
-print(f" prop Claims finalised before and including quarter 48: {np.mean(data.groupby('claim_no').last()['finalised_quarter'] <= 40)}")
-'''
 
 # Adding censoring times to index dataframe
 index_data_list = []
@@ -221,6 +204,11 @@ databoxes = pd.DataFrame(databoxes_list, columns = ['index', 'c', 'claim_no',
                                                     'OCL', 'cumpaid', 
                                                     'multiplier'])
 
+index_data['cumpaid'] = index_data['cumpaid'].fillna(0)
+
+# adding true_ocl to index data
+index_data['true_ocl'] = index_data['claim_size'] - index_data['cumpaid']
+index_data['log_true_ocl'] = np.log(index_data['true_ocl'])
 
 # renaming columns
 index_data.rename(columns = {'c': 'pred_time'}, inplace = True)
@@ -245,55 +233,54 @@ databoxes['is_minor'] = [1 if (element == 'Mi' or element == 'PMi') else 0
 
 # rename columns
 databoxes.rename(columns = {'cumpaid': 'paid', 'OCL': 'ocl'}, inplace = True)
-index_data.rename(columns = {'claim_size': 'target', 
-                             'incurred': 'latest_incurred'}, inplace = True)
+index_data.rename(columns = {'incurred': 'latest_incurred'}, inplace = True)
 
 
 # observation level
-import matplotlib.pyplot as plt
-plt.hist(index_data['finalised_quarter'], bins = 20)
-plt.show()
+#import matplotlib.pyplot as plt
+#plt.hist(index_data['finalised_quarter'], bins = 20)
+#plt.show()
 
-print(f"max occurrence quarter: {index_data['occ_quarter'].max()}")
-print(f"max finalisation quarter: {index_data['finalised_quarter'].max()}")
+#print(f"max occurrence quarter: {index_data['occ_quarter'].max()}")
+#print(f"max finalisation quarter: {index_data['finalised_quarter'].max()}")
 
-print(f"# Observations finalised after quarter 48: {sum(index_data['finalised_quarter'] > 48)}")
-print(f"# Observations finalised between quarters 42 and 48: {sum((index_data['finalised_quarter'] > 42) & (index_data['finalised_quarter'] <= 48))}")
-print(f"# Observations finalised before and including quarter 42: {sum(index_data['finalised_quarter'] <= 42)}")
+#print(f"# Observations finalised after quarter 48: {sum(index_data['finalised_quarter'] > 48)}")
+#print(f"# Observations finalised between quarters 42 and 48: {sum((index_data['finalised_quarter'] > 42) & (index_data['finalised_quarter'] <= 48))}")
+#print(f"# Observations finalised before and including quarter 42: {sum(index_data['finalised_quarter'] <= 42)}")
 
-print(f"prop Observations finalised after quarter 48: {np.mean(index_data['finalised_quarter'] > 48):.3f}")
-print(f"# Observations finalised between quarters 42 and 48: {np.mean((index_data['finalised_quarter'] > 42) & (index_data['finalised_quarter'] <= 48)):.3f}")
-print(f"prop Observations finalised before and including quarter 42: {np.mean(index_data['finalised_quarter'] <= 42):.3f}")
+#print(f"prop Observations finalised after quarter 48: {np.mean(index_data['finalised_quarter'] > 48):.3f}")
+#print(f"# Observations finalised between quarters 42 and 48: {np.mean((index_data['finalised_quarter'] > 42) & (index_data['finalised_quarter'] <= 48)):.3f}")
+#print(f"prop Observations finalised before and including quarter 42: {np.mean(index_data['finalised_quarter'] <= 42):.3f}")
 
 # claim level
-plt.hist(index_data.groupby('claim_no').last()['finalised_quarter'])
-plt.show()
+#plt.hist(index_data.groupby('claim_no').last()['finalised_quarter'])
+#plt.show()
 
-print(f"# Claims finalised after quarter 48: {sum(index_data.groupby('claim_no').last()['finalised_quarter'] > 48)}")
-print(f"# Claims finalised between quarters 42 and 48: {sum((index_data.groupby('claim_no').last()['finalised_quarter'] > 42) & (index_data.groupby('claim_no').last()['finalised_quarter'] <= 48))}")
-print(f"# Claims finalised before and including quarter 48: {sum(index_data.groupby('claim_no').last()['finalised_quarter'] <= 48)}")
+#print(f"# Claims finalised after quarter 48: {sum(index_data.groupby('claim_no').last()['finalised_quarter'] > 48)}")
+#print(f"# Claims finalised between quarters 42 and 48: {sum((index_data.groupby('claim_no').last()['finalised_quarter'] > 42) & (index_data.groupby('claim_no').last()['finalised_quarter'] <= 48))}")
+#print(f"# Claims finalised before and including quarter 48: {sum(index_data.groupby('claim_no').last()['finalised_quarter'] <= 48)}")
 
-print(f" prop Claims finalised after quarter 48: {np.mean(index_data.groupby('claim_no').last()['finalised_quarter'] > 48):.3f}")
-print(f" prop Claims finalised between quarters 42 and 48: {np.mean((index_data.groupby('claim_no').last()['finalised_quarter'] > 42) & (index_data.groupby('claim_no').last()['finalised_quarter'] <= 48)):.3f}")
-print(f" prop Claims finalised before and including quarter 42: {np.mean(index_data.groupby('claim_no').last()['finalised_quarter'] <= 42):.3f}")
+#print(f" prop Claims finalised after quarter 48: {np.mean(index_data.groupby('claim_no').last()['finalised_quarter'] > 48):.3f}")
+#print(f" prop Claims finalised between quarters 42 and 48: {np.mean((index_data.groupby('claim_no').last()['finalised_quarter'] > 42) & (index_data.groupby('claim_no').last()['finalised_quarter'] <= 48)):.3f}")
+#print(f" prop Claims finalised before and including quarter 42: {np.mean(index_data.groupby('claim_no').last()['finalised_quarter'] <= 42):.3f}")
 
 
 # checking proportions at cal time 40 (this should be true valuation date)
-print(f"# Observations finalised after quarter 40: {sum(index_data['finalised_quarter'] > 40)}")
-print(f"# Observations finalised between quarters 36 and 40: {sum((index_data['finalised_quarter'] > 36) & (index_data['finalised_quarter'] <= 40))}")
-print(f"# Observations finalised before and including quarter 36: {sum(index_data['finalised_quarter'] <= 36)}")
+#print(f"# Observations finalised after quarter 40: {sum(index_data['finalised_quarter'] > 40)}")
+#print(f"# Observations finalised between quarters 36 and 40: {sum((index_data['finalised_quarter'] > 36) & (index_data['finalised_quarter'] <= 40))}")
+#print(f"# Observations finalised before and including quarter 36: {sum(index_data['finalised_quarter'] <= 36)}")
 
-print(f"prop Observations finalised after quarter 40: {np.mean(index_data['finalised_quarter'] > 40):.3f}")
-print(f"# Observations finalised between quarters 36 and 40: {np.mean((index_data['finalised_quarter'] > 36) & (index_data['finalised_quarter'] <= 40)):.3f}")
-print(f"prop Observations finalised before and including quarter 36: {np.mean(index_data['finalised_quarter'] <= 36):.3f}")
+#print(f"prop Observations finalised after quarter 40: {np.mean(index_data['finalised_quarter'] > 40):.3f}")
+#print(f"# Observations finalised between quarters 36 and 40: {np.mean((index_data['finalised_quarter'] > 36) & (index_data['finalised_quarter'] <= 40)):.3f}")
+#print(f"prop Observations finalised before and including quarter 36: {np.mean(index_data['finalised_quarter'] <= 36):.3f}")
 
-print(f"# Claims finalised after quarter 40: {sum(index_data.groupby('claim_no').last()['finalised_quarter'] > 40)}")
-print(f"# Claims finalised between quarters 36 and 40: {sum((index_data.groupby('claim_no').last()['finalised_quarter'] > 36) & (index_data.groupby('claim_no').last()['finalised_quarter'] <= 40))}")
-print(f"# Claims finalised before and including quarter 40: {sum(index_data.groupby('claim_no').last()['finalised_quarter'] <= 40)}")
+#print(f"# Claims finalised after quarter 40: {sum(index_data.groupby('claim_no').last()['finalised_quarter'] > 40)}")
+#print(f"# Claims finalised between quarters 36 and 40: {sum((index_data.groupby('claim_no').last()['finalised_quarter'] > 36) & (index_data.groupby('claim_no').last()['finalised_quarter'] <= 40))}")
+#print(f"# Claims finalised before and including quarter 40: {sum(index_data.groupby('claim_no').last()['finalised_quarter'] <= 40)}")
 
-print(f" prop Claims finalised after quarter 40: {np.mean(index_data.groupby('claim_no').last()['finalised_quarter'] > 40):.3f}")
-print(f" prop Claims finalised between quarters 36 and 40: {np.mean((index_data.groupby('claim_no').last()['finalised_quarter'] > 36) & (index_data.groupby('claim_no').last()['finalised_quarter'] <= 40)):.3f}")
-print(f" prop Claims finalised before and including quarter 36: {np.mean(index_data.groupby('claim_no').last()['finalised_quarter'] <= 36):.3f}")
+#print(f" prop Claims finalised after quarter 40: {np.mean(index_data.groupby('claim_no').last()['finalised_quarter'] > 40):.3f}")
+#print(f" prop Claims finalised between quarters 36 and 40: {np.mean((index_data.groupby('claim_no').last()['finalised_quarter'] > 36) & (index_data.groupby('claim_no').last()['finalised_quarter'] <= 40)):.3f}")
+#print(f" prop Claims finalised before and including quarter 36: {np.mean(index_data.groupby('claim_no').last()['finalised_quarter'] <= 36):.3f}")
 
 
 ### TRAIN TEST SPLIT ##########################################################
@@ -344,32 +331,37 @@ v2_test_set = test_set.loc[:, ['index', 'claim_no', 'pred_time', 'dev_time',
 
 v1_train_index = train_index.loc[:, ['index', 'claim_no', 'pred_time', 
                                      'dev_quarter', 'occ_quarter', 
-                                     'finalised_quarter', 'target', 
-                                     'latest_incurred', 'm', 'log_m']]
+                                     'finalised_quarter', 'claim_size', 
+                                     'latest_incurred', 'm', 'log_m',
+                                     'true_ocl', 'log_true_ocl']]
 
 v1_val_index = val_index.loc[:, ['index', 'claim_no', 'pred_time', 
                                  'dev_quarter', 'occ_quarter', 
-                                 'finalised_quarter', 'target', 
-                                 'latest_incurred', 'm', 'log_m']]
+                                 'finalised_quarter', 'claim_size', 
+                                 'latest_incurred', 'm', 'log_m',
+                                 'true_ocl', 'log_true_ocl']]
 
 v1_test_index = test_index.loc[:, ['index', 'claim_no', 'pred_time', 
                                    'dev_quarter', 'occ_quarter', 
-                                   'finalised_quarter', 'target', 
-                                   'latest_incurred', 'm', 'log_m']]
+                                   'finalised_quarter', 'claim_size', 
+                                   'latest_incurred', 'm', 'log_m',
+                                   'true_ocl', 'log_true_ocl']]
 
 v3_train_index = train_index.loc[:, ['index', 'claim_no', 'pred_time', 
                                      'dev_quarter', 'occ_quarter', 
-                                     'finalised_quarter', 'target', 
-                                     'latest_incurred', 'm', 'log_m', 
+                                     'finalised_quarter', 'claim_size', 
+                                     'latest_incurred', 'm', 'log_m',
+                                     'true_ocl', 'log_true_ocl', 
                                      'num_payments', 'mean_payments', 
                                      'var_payments', 'max_payment', 
                                      'num_revisions', 'num_upward', 
-                                     'total_variation']]
+                                     'total_variation',]]
 
 v3_val_index = val_index.loc[:, ['index', 'claim_no', 'pred_time', 
                                  'dev_quarter', 'occ_quarter', 
-                                 'finalised_quarter', 'target', 
+                                 'finalised_quarter', 'claim_size', 
                                  'latest_incurred', 'm', 'log_m', 
+                                 'true_ocl', 'log_true_ocl',
                                  'num_payments', 'mean_payments', 
                                  'var_payments', 'max_payment',
                                    'num_revisions', 'num_upward', 
@@ -377,8 +369,9 @@ v3_val_index = val_index.loc[:, ['index', 'claim_no', 'pred_time',
 
 v3_test_index = test_index.loc[:, ['index', 'claim_no', 'pred_time', 
                                    'dev_quarter', 'occ_quarter', 
-                                   'finalised_quarter', 'target', 
+                                   'finalised_quarter', 'claim_size', 
                                    'latest_incurred', 'm', 'log_m', 
+                                   'true_ocl', 'log_true_ocl',
                                    'num_payments', 'mean_payments', 
                                    'var_payments', 'max_payment', 
                                    'num_revisions', 'num_upward', 
