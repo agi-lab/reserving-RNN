@@ -13,6 +13,7 @@ from torch.nn import functional as F
 from torch.utils.data import Dataset
 import torch.optim as optim
 from torch.nn.utils.rnn import pack_padded_sequence
+from torch.nn.utils import clip_grad_norm_
 
 # to use gpu if available
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -57,7 +58,7 @@ class ClaimsDataset(Dataset):
     """
 
     def __init__(self, target_col, index_path, set_path, version_no=1, 
-                 include_incurreds=True):
+                 include_incurreds=True, include_covariates=False):
         self.target_col = target_col # string referring to name of 
         # target column (i.e. 'claim_size', 'log_m')
         self.index = pd.read_csv(index_path) 
@@ -65,6 +66,7 @@ class ClaimsDataset(Dataset):
         self.version_no = version_no # either 1, 2 or 3
         self.include_incurreds = include_incurreds # whether to use case 
         # estimate data or not
+        self.include_covariates = include_covariates # whether to include covariate data or not
 
     def __len__(self):
         return len(self.index)
@@ -91,6 +93,11 @@ class ClaimsDataset(Dataset):
                 | (df['cal_time']!=0)\
                 | (df['paid']!=0)\
                 | (df['ocl']!=0)].shape[0]
+        
+        if self.include_covariates:
+            legal_rep = self.index['Legal Representation'][index]
+            injury_severity = self.index['Injury Severity'][index]
+            claimant_age = self.index['Age of Claimant'][index]
 
         if self.version_no == 1:
             
@@ -102,7 +109,13 @@ class ClaimsDataset(Dataset):
                databox = torch.tensor(df[['dev_time','cal_time','paid']].values) 
 
             # Return padded data
-            return (torch.nn.functional.pad(databox.float(), (0,0,0,40-nrows)), 
+            if self.include_covariates:
+                return (torch.nn.functional.pad(databox.float(), (0,0,0,40-nrows)), 
+                    target, claim_size, latest_incurred, true_ocl, real_index, 
+                    claim_no, pred_time, nrows, legal_rep, injury_severity, claimant_age)
+
+            else:
+                return (torch.nn.functional.pad(databox.float(), (0,0,0,40-nrows)), 
                     target, claim_size, latest_incurred, true_ocl, real_index, 
                     claim_no, pred_time, nrows)
 
@@ -118,7 +131,13 @@ class ClaimsDataset(Dataset):
                                            'multiplier']].values)
 
             # Return padded data
-            return (torch.nn.functional.pad(databox.float(), (0,0,0,40-nrows)), 
+            if self.include_covariates:
+                return (torch.nn.functional.pad(databox.float(), (0,0,0,40-nrows)), 
+                    target, claim_size, latest_incurred, true_ocl, real_index, 
+                    claim_no, pred_time, nrows, legal_rep, injury_severity, claimant_age)
+            
+            else:
+                return (torch.nn.functional.pad(databox.float(), (0,0,0,40-nrows)), 
                     target, claim_size, latest_incurred, true_ocl, real_index, 
                     claim_no, pred_time, nrows)
 
@@ -142,7 +161,15 @@ class ClaimsDataset(Dataset):
                                            'multiplier']].values)
 
             # Return padded data
-            return (torch.nn.functional.pad(databox.float(), (0,0,0,40-nrows)),  
+            if self.include_covariates:
+                return (torch.nn.functional.pad(databox.float(), (0,0,0,40-nrows)),  
+                    target, claim_size, latest_incurred, true_ocl, real_index, 
+                    claim_no, pred_time, nrows, num_payments, mean_payments, 
+                    var_payments, max_payment, num_revisions, num_upward, 
+                    total_variation, legal_rep, injury_severity, claimant_age)
+
+            else:
+                return (torch.nn.functional.pad(databox.float(), (0,0,0,40-nrows)),  
                     target, claim_size, latest_incurred, true_ocl, real_index, 
                     claim_no, pred_time, nrows, num_payments, mean_payments, 
                     var_payments, max_payment, num_revisions, num_upward, 
@@ -159,7 +186,7 @@ class ClaimsRNN(nn.Module):
 
     def __init__(self, nHidden, nLayers, nOut, version_no=1, type='RNN', 
                  nonlinearity='relu', output_layer='linear', dropout=0.0, 
-                 normalisation=None, include_incurreds=True):
+                 normalisation=None, include_incurreds=True, include_covariates=False):
         
         super(ClaimsRNN, self).__init__()
         self.nHidden = nHidden # number of hidden units
@@ -172,14 +199,15 @@ class ClaimsRNN(nn.Module):
         self.dropout = dropout # float between 0 and 1
         self.include_incurreds = include_incurreds # needs to match ClaimsDataset
         self.relu = nn.ReLU() # used for feed-forward hidden layer, should change this so different activation functions can be specified
-        # include_incurreds variable in ClaimsDataset
+        self.include_covariates = include_covariates
+
 
         # nFeatures is the number of features to be input into the RNN layer
         if self.version_no == 1:
             self.nFeatures = 3 + self.include_incurreds # 4 features with ocl, 3 without
         
         elif self.version_no == 2 or self.version_no == 3:
-            self.nFeatures = 7 + self.include_incurreds # 8 features with ocl, 7 without
+            self.nFeatures = 8 # have to include incurred data if using version 2 or 3
 
         # currently batch normalisation has been implemented, can add others
         if normalisation == 'batch':
@@ -205,14 +233,27 @@ class ClaimsRNN(nn.Module):
             raise ValueError("type must be 'RNN', 'LSTM' or 'GRU'")
 
         if version_no == 3:
-            # +8 becuase we are adding 7 derived features into the fc layer + 1 for pred time
-            self.fc1 = nn.Linear(nHidden + 8, nHidden // 2) 
+            if self.include_covariates:
+                # +11 becuase we are adding 7 derived features into the fc layer + 3 covariates + 1 for pred time
+                self.fc1 = nn.Linear(nHidden + 11, nHidden // 2)
+
+            else:
+                # +8 becuase we are adding 7 derived features into the fc layer + 1 for pred time
+                self.fc1 = nn.Linear(nHidden + 8, nHidden // 2) 
 
         else:
-            # +1 for pred time
-            self.fc1 = nn.Linear(nHidden + 1, nHidden // 2)
+            if self.include_covariates:
+                # +4 becuase we are adding 3 covariates into the fc layer + 1 for pred time
+                self.fc1 = nn.Linear(nHidden + 4, nHidden // 2)
+
+            else:
+                # +1 for pred time
+                self.fc1 = nn.Linear(nHidden + 1, nHidden // 2)
 
         self.fc2 = nn.Linear(nHidden // 2, nOut)
+
+        if (self.version_no == 2 or self.version_no == 3) and not self.include_incurreds:
+            raise ValueError('version_no 2 and 3 must include incurred data')
 
 
     def forward(self, x):
@@ -229,7 +270,12 @@ class ClaimsRNN(nn.Module):
                 ht = ht[0]
 
             # Concatenating the extra features
-            out = torch.cat((ht[-1,:,:], 
+            if self.include_covariates:
+                out = torch.cat((ht[-1,:,:], 
+                                 x[1], x[2], x[3], x[4], x[5], x[6], x[7], x[8], x[9], x[10], x[11]), 1)
+
+            else:
+                out = torch.cat((ht[-1,:,:], 
                              x[1], x[2], x[3], x[4], x[5], x[6], x[7], x[8]), 1)
 
             # Layer normalisation to ensure derived features have
@@ -244,7 +290,11 @@ class ClaimsRNN(nn.Module):
             if self.type == 'LSTM':
                 ht = ht[0]
 
-            out = torch.cat((ht[-1,:,:], x[1]), 1)
+            if self.include_covariates:
+                out = torch.cat((ht[-1,:,:], x[1], x[2], x[3], x[4]), 1)
+
+            else:
+                out = torch.cat((ht[-1,:,:], x[1]), 1)
 
         out = self.fc1(out)
 
@@ -309,10 +359,22 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
 
             # extract batch data
             if hp_comb['version_no'] == 3:
-                (datapoints, targets, claim_sizes, latest_incurreds, true_ocls,
-                 indexes, claim_nos, pred_times, nrowss, num_paymentss, 
-                 mean_paymentss, var_paymentss, max_payments, num_revisionss, 
-                 num_upwards, total_variations) = batch
+                if hp_comb['include_covariates']:
+                    (datapoints, targets, claim_sizes, latest_incurreds, true_ocls,
+                     indexes, claim_nos, pred_times, nrowss, num_paymentss, 
+                     mean_paymentss, var_paymentss, max_payments, num_revisionss, 
+                     num_upwards, total_variations, legal_reps, injury_severities, 
+                     claimant_ages) = batch
+                    
+                    legal_reps = legal_reps.unsqueeze(1).to(device).float()
+                    injury_severities = injury_severities.unsqueeze(1).to(device).float()
+                    claimant_ages = claimant_ages.unsqueeze(1).to(device).float()
+
+                else:    
+                    (datapoints, targets, claim_sizes, latest_incurreds, true_ocls,
+                     indexes, claim_nos, pred_times, nrowss, num_paymentss, 
+                     mean_paymentss, var_paymentss, max_payments, num_revisionss, 
+                     num_upwards, total_variations) = batch
 
                 num_paymentss = num_paymentss.unsqueeze(1).to(device).float()
                 mean_paymentss = mean_paymentss.unsqueeze(1).to(device).float()
@@ -323,8 +385,18 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
                 total_variations=total_variations.unsqueeze(1).to(device).float()
 
             else:
-                (datapoints, targets, claim_sizes, latest_incurreds, true_ocls,
-                 indexes, claim_nos, pred_times, nrowss) = batch
+                if hp_comb['include_covariates']:
+                    (datapoints, targets, claim_sizes, latest_incurreds, true_ocls,
+                     indexes, claim_nos, pred_times, nrowss, legal_reps, 
+                     injury_severities, claimant_ages) = batch
+
+                    legal_reps = legal_reps.unsqueeze(1).to(device).float()
+                    injury_severities = injury_severities.unsqueeze(1).to(device).float()
+                    claimant_ages = claimant_ages.unsqueeze(1).to(device).float()
+                
+                else:
+                    (datapoints, targets, claim_sizes, latest_incurreds, 
+                     true_ocls, indexes, claim_nos, pred_times, nrowss) = batch
                 
             datapoints = datapoints.to(device).float()
             targets = targets.to(device).float()
@@ -339,12 +411,24 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
 
             if hp_comb['version_no'] == 3:
                 # create a tuple with packed and the extra features
-                packed_extra = (packed, pred_times, num_paymentss, 
-                                mean_paymentss, var_paymentss, max_payments, 
-                                num_revisionss, num_upwards, total_variations)
+                if hp_comb['include_covariates']:
+                    packed_extra = (packed, pred_times, num_paymentss, 
+                                    mean_paymentss, var_paymentss, max_payments, 
+                                    num_revisionss, num_upwards, total_variations, 
+                                    legal_reps, injury_severities, claimant_ages)
+
+                else:
+                    packed_extra = (packed, pred_times, num_paymentss, 
+                                    mean_paymentss, var_paymentss, max_payments, 
+                                    num_revisionss, num_upwards, total_variations)
 
             else:
-                packed_extra = (packed, pred_times)  
+                if hp_comb['include_covariates']:
+                    packed_extra = (packed, pred_times, legal_reps, 
+                                    injury_severities, claimant_ages)
+
+                else:
+                    packed_extra = (packed, pred_times)  
                 
             raw_preds = model(packed_extra)    
             raw_preds = raw_preds.reshape(raw_preds.shape[0])
@@ -374,6 +458,11 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
             loss = hp_comb['criterion'](raw_preds, targets)
             optimiser.zero_grad()
             loss.backward() # Calculate gradients
+
+            # clip gradients (testing this atm)
+            max_norm = 1
+            clip_grad_norm_(model.parameters(), max_norm)
+
             optimiser.step() # Update weights
 
             # Track statistics
@@ -486,10 +575,22 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
     with torch.no_grad():
         for batch in test_loader:
             if hp_comb['version_no'] == 3:
-                (datapoints, targets, claim_sizes, latest_incurreds, true_ocls, 
-                 indexes, claim_nos, pred_times, nrowss, num_paymentss, 
-                 mean_paymentss, var_paymentss, max_payments, num_revisionss, 
-                 num_upwards, total_variations) = batch
+                if hp_comb['include_covariates']:
+                    (datapoints, targets, claim_sizes, latest_incurreds, true_ocls, 
+                     indexes, claim_nos, pred_times, nrowss, num_paymentss, 
+                     mean_paymentss, var_paymentss, max_payments, num_revisionss, 
+                     num_upwards, total_variations, legal_reps, injury_severities, 
+                     claimant_ages) = batch
+
+                    legal_reps = legal_reps.unsqueeze(1).to(device).float()
+                    injury_severities = injury_severities.unsqueeze(1).to(device).float()
+                    claimant_ages = claimant_ages.unsqueeze(1).to(device).float()
+
+                else:
+                    (datapoints, targets, claim_sizes, latest_incurreds, true_ocls, 
+                     indexes, claim_nos, pred_times, nrowss, num_paymentss, 
+                     mean_paymentss, var_paymentss, max_payments, num_revisionss, 
+                     num_upwards, total_variations) = batch
 
                 num_paymentss = num_paymentss.unsqueeze(1).to(device).float()
                 mean_paymentss = mean_paymentss.unsqueeze(1).to(device).float()
@@ -500,8 +601,18 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
                 total_variations = total_variations.unsqueeze(1).to(device).float()
 
             else:
-                (datapoints, targets, claim_sizes, latest_incurreds, true_ocls, 
-                 indexes, claim_nos, pred_times, nrowss) = batch
+                if hp_comb['include_covariates']:
+                    (datapoints, targets, claim_sizes, latest_incurreds, true_ocls, 
+                     indexes, claim_nos, pred_times, nrowss, legal_reps, 
+                     injury_severities, claimant_ages) = batch
+
+                    legal_reps = legal_reps.unsqueeze(1).to(device).float()
+                    injury_severities = injury_severities.unsqueeze(1).to(device).float()
+                    claimant_ages = claimant_ages.unsqueeze(1).to(device).float()
+
+                else:
+                    (datapoints, targets, claim_sizes, latest_incurreds, true_ocls, 
+                     indexes, claim_nos, pred_times, nrowss) = batch
 
             datapoints = datapoints.to(device).float()
             targets = targets.to(device).float()
@@ -516,12 +627,24 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
 
             if hp_comb['version_no'] == 3:
                 # create a tuple with packed and the extra features
-                packed_extra = (packed, pred_times, num_paymentss, 
-                                mean_paymentss, var_paymentss, max_payments, 
-                                num_revisionss, num_upwards, total_variations)
+                if hp_comb['include_covariates']:
+                    packed_extra = (packed, pred_times, num_paymentss, 
+                                    mean_paymentss, var_paymentss, max_payments, 
+                                    num_revisionss, num_upwards, total_variations, 
+                                    legal_reps, injury_severities, claimant_ages)
+                
+                else:
+                    packed_extra = (packed, pred_times, num_paymentss, 
+                                    mean_paymentss, var_paymentss, max_payments, 
+                                    num_revisionss, num_upwards, total_variations)
 
             else:
-                packed_extra = (packed, pred_times)
+                if hp_comb['include_covariates']:
+                    packed_extra = (packed, pred_times, legal_reps, 
+                                    injury_severities, claimant_ages)
+                
+                else:
+                    packed_extra = (packed, pred_times)
 
             raw_preds = model(packed_extra)
             raw_preds = raw_preds.reshape(raw_preds.shape[0])
@@ -603,12 +726,17 @@ def get_heatmap(actuals, preds, nbins):
     plt.ylabel('Predicted ($log_{10}$)')
     plt.show()
 
-def get_losses(actuals, preds, incurreds):
+def get_losses(actuals, preds, incurreds, dataset, hp_comb):
     '''Computes and prints the MALE and MSLE for the model's predictions and 
     the case estimates.
     
     The losses will be calculated using ultimate claim size for 'claim_size' 
     and 'log_m' targets, and true ocl for 'true_ocl' and 'log_true_ocl' targets.'''
+
+    if hp_comb['target_col'] == 'true_ocl' or hp_comb['target_col'] == 'log_true_ocl':
+        actuals = dataset.index['true_ocl']
+        preds = preds - dataset.index['claim_size'] + dataset.index['true_ocl']
+        incurreds = incurreds - dataset.index['claim_size'] + dataset.index['true_ocl']
 
     preds_male = MeanAbsoluteLogError()(preds, actuals)
     preds_msle = MeanSquaredLogError()(preds, actuals)
@@ -618,6 +746,7 @@ def get_losses(actuals, preds, incurreds):
 
     print(f'model MALE: {preds_male:.3f}, MSLE: {preds_msle:.3f}')
     print(f'incurred MALE: {incurreds_male:.3f}, MSLE: {incurreds_msle:.3f}')
+
 
 def get_vsInc(actuals, preds, incurreds):
     return 100 * np.mean(np.abs((actuals-preds)) < np.abs((actuals-incurreds)))
@@ -668,7 +797,10 @@ def get_latest(test_data, actuals, preds, incurreds):
     latest_actuals = actuals[indicator]
     latest_incurreds = incurreds[indicator]
 
-    return latest_actuals, latest_preds, latest_incurreds
+    latest_data = deepcopy(test_data)
+    latest_data.index = test_data.index[indicator]
+
+    return latest_actuals, latest_preds, latest_incurreds, latest_data
 
 def get_dev_quarter(test_data, actuals, preds, incurreds, dev_quarter):
     '''Finds the predictions for a specific development quarter and returns the
@@ -678,7 +810,10 @@ def get_dev_quarter(test_data, actuals, preds, incurreds, dev_quarter):
     dev_preds = preds[indicator]
     dev_incurreds = incurreds[indicator]
 
-    return dev_actuals, dev_preds, dev_incurreds
+    dev_data = deepcopy(test_data)
+    dev_data.index = test_data.index[indicator]
+
+    return dev_actuals, dev_preds, dev_incurreds, dev_data
 
 def aggregate_by_time(index_data, actuals, preds, incurreds, time_str):
     '''Plots aggregate claims, vsInc and weighted vsInc over time, 
@@ -753,7 +888,7 @@ def get_aggregates(actuals, preds, incurreds):
     print(f'Aggregate actual: {aggregate_actual:,.0f}')
     print(f'Aggregate incurred: {aggregate_incurred:,.0f}')
 
-def get_small_large(actuals, preds, incurreds, small_threshold, 
+def get_small_large(actuals, preds, incurreds, test_data, small_threshold, 
                     large_threshold):
     
     '''Splits the data into small, medium and large claims based on the 
@@ -776,9 +911,19 @@ def get_small_large(actuals, preds, incurreds, small_threshold,
     large_preds = preds[actuals >= large_threshold]
     large_incurreds = incurreds[actuals >= large_threshold]
 
+    small_data = deepcopy(test_data)
+    small_data.index = test_data.index[actuals < small_threshold]
+
+    medium_data = deepcopy(test_data)
+    medium_data.index = test_data.index[(actuals > small_threshold) & (actuals < large_threshold)]
+
+    large_data = deepcopy(test_data)
+    large_data.index = test_data.index[actuals >= large_threshold]
+
     return (small_actuals, small_preds, small_incurreds, 
             medium_actuals, medium_preds, medium_incurreds, 
-            large_actuals, large_preds, large_incurreds)
+            large_actuals, large_preds, large_incurreds,
+            small_data, medium_data, large_data)
 
 def get_close_far(actuals, preds, incurreds):
     '''Plots the distribution of the winning and losing margins for the 
@@ -861,23 +1006,25 @@ def analyse_model(model, dataset, hp_comb,
     print('All')
     actuals, preds, incurreds = get_preds_actuals(model, dataset, hp_comb)
     get_aggregates(actuals, preds, incurreds)
-    get_losses(actuals, preds, incurreds)
+    get_losses(actuals, preds, incurreds, dataset, hp_comb)
     print(f'vsInc: {get_vsInc(actuals, preds, incurreds):.2f}%')
     print(f'Weighted vsInc: {get_weighted_vsInc(actuals, preds, incurreds):.2f}%')
     print(f'number of preds: {len(preds)}')
+
+    #print(f'preds: min = {preds.min()}, mean = {preds.mean()}, max = {preds.max()}')
+
     get_heatmap(actuals, preds, nbins=50)
     get_close_far(actuals, preds, incurreds)
 
 
     # Analysing the latest prediction for each claim
     print('Latest')
-    latest_actuals, latest_preds, latest_incurreds = get_latest(dataset, 
-                                                                actuals, 
-                                                                preds, 
-                                                                incurreds)
+    (latest_actuals, latest_preds, 
+     latest_incurreds, latest_data) = get_latest(dataset, actuals, 
+                                                 preds, incurreds)
     
     get_aggregates(latest_actuals, latest_preds, latest_incurreds)
-    get_losses(latest_actuals, latest_preds, latest_incurreds)
+    get_losses(latest_actuals, latest_preds, latest_incurreds, latest_data, hp_comb)
     print(f'vsInc: {get_vsInc(latest_actuals, latest_preds, latest_incurreds):.2f}%')
 
     weighted_vsinc = get_weighted_vsInc(latest_actuals, 
@@ -899,13 +1046,12 @@ def analyse_model(model, dataset, hp_comb,
     nbinss = [40, 30, 30, 20]
     for i in range(len(dev_quarters)):
         print(f'Dev Quarter {dev_quarters[i]}')
-        (dev_actuals, 
-         dev_preds, 
-         dev_incurreds) = get_dev_quarter(dataset, actuals, preds, incurreds, 
-                                          dev_quarter=dev_quarters[i])
+        (dev_actuals, dev_preds, 
+         dev_incurreds, dev_data) = get_dev_quarter(dataset, actuals, preds, 
+                                                    incurreds, dev_quarters[i])
         
         get_aggregates(dev_actuals, dev_preds, dev_incurreds)
-        get_losses(dev_actuals, dev_preds, dev_incurreds)
+        get_losses(dev_actuals, dev_preds, dev_incurreds, dev_data, hp_comb)
         print(f'vsInc: {get_vsInc(dev_actuals, dev_preds, dev_incurreds):.2f}%')
 
         weighted_vsinc = get_weighted_vsInc(dev_actuals, 
@@ -921,13 +1067,14 @@ def analyse_model(model, dataset, hp_comb,
     # Analysing all claims by size
     (small_actuals, small_preds, small_incurreds, 
      medium_actuals, medium_preds, medium_incurreds, 
-     large_actuals, large_preds, 
-     large_incurreds) = get_small_large(actuals, preds, incurreds, 
-                                        small_threshold, large_threshold)
+     large_actuals, large_preds, large_incurreds, 
+     small_data, medium_data, 
+     large_data) = get_small_large(actuals, preds, incurreds, dataset,
+                                   small_threshold, large_threshold)
     
     print('Small')
     get_aggregates(small_actuals, small_preds, small_incurreds)
-    get_losses(small_actuals, small_preds, small_incurreds)
+    get_losses(small_actuals, small_preds, small_incurreds, small_data, hp_comb)
     print(f'vsInc: {get_vsInc(small_actuals, small_preds, small_incurreds):.2f}%')
 
     weighted_vsinc = get_weighted_vsInc(small_actuals, 
@@ -954,7 +1101,7 @@ def analyse_model(model, dataset, hp_comb,
 
     print('Medium')
     get_aggregates(medium_actuals, medium_preds, medium_incurreds)
-    get_losses(medium_actuals, medium_preds, medium_incurreds)
+    get_losses(medium_actuals, medium_preds, medium_incurreds, medium_data, hp_comb)
     print(f'vsInc: {get_vsInc(medium_actuals, medium_preds, medium_incurreds):.2f}%')
 
     weighted_vsinc = get_weighted_vsInc(medium_actuals, 
@@ -979,7 +1126,7 @@ def analyse_model(model, dataset, hp_comb,
 
     print('Large')
     get_aggregates(large_actuals, large_preds, large_incurreds)
-    get_losses(large_actuals, large_preds, large_incurreds)
+    get_losses(large_actuals, large_preds, large_incurreds, large_data, hp_comb)
     print(f'vsInc: {get_vsInc(large_actuals, large_preds, large_incurreds):.2f}%')
 
     weighted_vsinc = get_weighted_vsInc(large_actuals, 
@@ -1002,14 +1149,14 @@ def analyse_model(model, dataset, hp_comb,
     # Analysing latest predictions by ultimate size of claim
     (small_actuals, small_preds, small_incurreds, 
      medium_actuals, medium_preds, medium_incurreds, 
-     large_actuals, large_preds, 
-     large_incurreds) = get_small_large(latest_actuals, latest_preds, 
-                                        latest_incurreds, small_threshold, 
-                                        large_threshold)
+     large_actuals, large_preds, large_incurreds, 
+     small_data, medium_data, 
+     large_data) = get_small_large(latest_actuals, latest_preds, latest_incurreds, 
+                                   latest_data, small_threshold, large_threshold)
     
     print('Small Latest')
     get_aggregates(small_actuals, small_preds, small_incurreds)
-    get_losses(small_actuals, small_preds, small_incurreds)
+    get_losses(small_actuals, small_preds, small_incurreds, small_data, hp_comb)
     print(f'vsInc: {get_vsInc(small_actuals, small_preds, small_incurreds):.2f}%')
 
     weighted_vsinc = get_weighted_vsInc(small_actuals, 
@@ -1024,7 +1171,7 @@ def analyse_model(model, dataset, hp_comb,
 
     print('Medium Latest')
     get_aggregates(medium_actuals, medium_preds, medium_incurreds)
-    get_losses(medium_actuals, medium_preds, medium_incurreds)
+    get_losses(medium_actuals, medium_preds, medium_incurreds, medium_data, hp_comb)
     print(f'vsInc: {get_vsInc(medium_actuals, medium_preds, medium_incurreds):.2f}%')
 
     weighted_vsinc = get_weighted_vsInc(medium_actuals, 
@@ -1039,7 +1186,7 @@ def analyse_model(model, dataset, hp_comb,
 
     print('Large Latest')
     get_aggregates(large_actuals, large_preds, large_incurreds)
-    get_losses(large_actuals, large_preds, large_incurreds)
+    get_losses(large_actuals, large_preds, large_incurreds, large_data, hp_comb)
     print(f'vsInc: {get_vsInc(large_actuals, large_preds, large_incurreds):.2f}%')
 
     weighted_vsinc = get_weighted_vsInc(large_actuals, 
@@ -1095,19 +1242,22 @@ def cross_validate(fp_in, fp_out, hyperparameter_grid, verbose=True):
                                   fp_in + 'train_index.csv', 
                                   fp_in + 'train_set.csv',
                                   hp_comb['version_no'],
-                                  hp_comb['include_incurreds'])
+                                  hp_comb['include_incurreds'],
+                                  hp_comb['include_covariates'])
         
         val_set = ClaimsDataset(hp_comb['target_col'], 
                                 fp_in + 'val_index.csv', 
                                 fp_in + 'val_set.csv', 
                                 hp_comb['version_no'],
-                                hp_comb['include_incurreds'])
+                                hp_comb['include_incurreds'],
+                                hp_comb['include_covariates'])
         
         model = ClaimsRNN(hp_comb['nHidden'], hp_comb['nLayers'], 
                           hp_comb['nOut'], hp_comb['version_no'], 
                           hp_comb['type'], hp_comb['nonlinearity'], 
                           hp_comb['output_layer'], hp_comb['dropout'], 
-                          hp_comb['normalisation'], hp_comb['include_incurreds']).to(device)
+                          hp_comb['normalisation'], hp_comb['include_incurreds'], 
+                          hp_comb['include_covariates']).to(device)
         
         optimiser = optim.Adam(model.parameters(), lr=hp_comb['lr'])
 
@@ -1132,6 +1282,7 @@ def cross_validate(fp_in, fp_out, hyperparameter_grid, verbose=True):
         # appending results to dataframe
         row = pd.DataFrame({'dataset': fp_in.split('/')[-2], 
                             'include_incurreds': hp_comb['include_incurreds'],
+                            'include_covariates': hp_comb['include_covariates'],
                             'version_no': hp_comb['version_no'], 
                             'target_col': hp_comb['target_col'], 
                             'type': hp_comb['type'], 
@@ -1163,7 +1314,9 @@ def cross_validate(fp_in, fp_out, hyperparameter_grid, verbose=True):
                       best_hp_comb['nOut'], best_hp_comb['version_no'], 
                       best_hp_comb['type'], best_hp_comb['nonlinearity'], 
                       best_hp_comb['output_layer'], best_hp_comb['dropout'], 
-                      best_hp_comb['normalisation'], best_hp_comb['include_incurreds']).to(device)
+                      best_hp_comb['normalisation'], 
+                      best_hp_comb['include_incurreds'], 
+                      best_hp_comb['include_covariates']).to(device)
     
     model.load_state_dict(best_weights)
     analyse_model(model, val_set, best_hp_comb)
@@ -1192,19 +1345,22 @@ def final_test(fp_in, fp_out, hp_comb, iterations, verbose=True,
                               fp_in + 'train_index.csv', 
                               fp_in + 'train_set.csv', 
                               hp_comb['version_no'],
-                              hp_comb['include_incurreds'])
+                              hp_comb['include_incurreds'],
+                              hp_comb['include_covariates'])
 
     val_set = ClaimsDataset(hp_comb['target_col'], 
                             fp_in + 'val_index.csv', 
                             fp_in + 'val_set.csv', 
                             hp_comb['version_no'],
-                            hp_comb['include_incurreds'])
+                            hp_comb['include_incurreds'],
+                            hp_comb['include_covariates'])
 
     test_set = ClaimsDataset(hp_comb['target_col'], 
                              fp_in + 'test_index.csv', 
                              fp_in + 'test_set.csv', 
                              hp_comb['version_no'],
-                             hp_comb['include_incurreds'])
+                             hp_comb['include_incurreds'],
+                             hp_comb['include_covariates'])
 
     preds_matrix = np.zeros(shape=(iterations, len(test_set.index.index)))
     vsInc_list = np.zeros(shape=iterations)
@@ -1218,7 +1374,8 @@ def final_test(fp_in, fp_out, hp_comb, iterations, verbose=True,
                             hp_comb['nOut'], hp_comb['version_no'], 
                             hp_comb['type'], hp_comb['nonlinearity'], 
                             hp_comb['output_layer'], hp_comb['dropout'], 
-                            hp_comb['normalisation'], hp_comb['include_incurreds']).to(device)
+                            hp_comb['normalisation'], hp_comb['include_incurreds'], 
+                            hp_comb['include_covariates']).to(device)
             
             optimiser = optim.Adam(model.parameters(), lr=hp_comb['lr'])
 
@@ -1411,7 +1568,8 @@ def plot_claim(preds_list, data, claim_no):
 
 def create_grid(version_nos, target_cols, criterions, types, output_layers, 
                 nOuts, epochss, nHiddens, nLayerss, patiences, batch_sizes, 
-                lrs, nonlinearitys, dropouts, normalisations, include_incurredss):
+                lrs, nonlinearitys, dropouts, normalisations, 
+                include_incurredss, include_covariatess):
     
     '''
     Inputs: lists of hyperparameter values
@@ -1422,7 +1580,8 @@ def create_grid(version_nos, target_cols, criterions, types, output_layers,
     for params in product(version_nos, target_cols, criterions, types, 
                           output_layers, nOuts, epochss, nHiddens, nLayerss, 
                           patiences, batch_sizes, lrs, nonlinearitys, 
-                          dropouts, normalisations, include_incurredss):
+                          dropouts, normalisations, include_incurredss, 
+                          include_covariatess):
         
         hyperparameter_grid.append({
             'version_no': params[0],
@@ -1440,7 +1599,8 @@ def create_grid(version_nos, target_cols, criterions, types, output_layers,
             'nonlinearity': params[12],
             'dropout': params[13],
             'normalisation': params[14],
-            'include_incurreds': params[15]
+            'include_incurreds': params[15],
+            'include_covariates': params[16]
         })
 
     return hyperparameter_grid

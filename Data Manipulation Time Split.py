@@ -28,16 +28,16 @@ import pathlib
 ### FILEPATHS (ADJUST THESE BEFORE RUNNING) ###################################
 
 # filepaths noInf
-fp_in = 'Datasets/R Outputs/test_incurred_dataset_noInf.csv'
-fp_out_v1 = 'Datasets/Python Inputs/V1/noInf Time/'
-fp_out_v2 = 'Datasets/Python Inputs/V2/noInf Time/'
-fp_out_v3 = 'Datasets/Python Inputs/V3/noInf Time/'
+fp_in = 'Datasets/R Outputs/data_noInf_cov_TRUE_seed_20201006.csv'
+#fp_covariates = 'Datasets/R Outputs/covariate_data_seed_20201006.csv'
 
-# filepaths Inflated
-#fp_in = 'Datasets/R Outputs/test_incurred_dataset_Inflated.csv'
-#fp_out_v1 = 'Datasets/Python Inputs/V1/Inflated Time/'
-#fp_out_v2 = 'Datasets/Python Inputs/V2/Inflated Time/'
-#fp_out_v3 = 'Datasets/Python Inputs/V3/Inflated Time/'
+#fp_in = 'Datasets/R Outputs/test_incurred_dataset_noInf.csv'
+fp_covariates = ''
+
+fp_out_v1 = 'Datasets/Python Inputs/V1/noInf Triangular WithInc/'
+fp_out_v2 = 'Datasets/Python Inputs/V2/noInf Triangular WithInc/'
+fp_out_v3 = 'Datasets/Python Inputs/V3/noInf Triangular WithInc/'
+fp_out_v1_noInc = 'Datasets/Python Inputs/V1/noInf Triangular NoInc/'
 
 
 ### FUNCTIONS #################################################################
@@ -235,6 +235,15 @@ databoxes['is_minor'] = [1 if (element == 'Mi' or element == 'PMi') else 0
 databoxes.rename(columns = {'cumpaid': 'paid', 'OCL': 'ocl'}, inplace = True)
 index_data.rename(columns = {'incurred': 'latest_incurred'}, inplace = True)
 
+# Some claim reports have payments really close to 0, need to set these to exactly 0
+databoxes.loc[databoxes['paid'] < 0.01, 'paid'] = 0
+
+# adding covariate data to index file if it exists
+if fp_covariates:
+    covariates = pd.read_csv(fp_covariates)
+    testing = pd.concat([index_data, covariates], axis=1)
+# ISSUE: TESTING ONLY HAS 1 ROW PER CLAIM, INDEX HAS 1 ROW PER OBSERVATION
+
 
 # observation level
 #import matplotlib.pyplot as plt
@@ -282,17 +291,7 @@ index_data.rename(columns = {'incurred': 'latest_incurred'}, inplace = True)
 #print(f" prop Claims finalised between quarters 36 and 40: {np.mean((index_data.groupby('claim_no').last()['finalised_quarter'] > 36) & (index_data.groupby('claim_no').last()['finalised_quarter'] <= 40)):.3f}")
 #print(f" prop Claims finalised before and including quarter 36: {np.mean(index_data.groupby('claim_no').last()['finalised_quarter'] <= 36):.3f}")
 
-
 ### TRAIN TEST SPLIT ##########################################################
-
-# Valuation date is 48
-#train_index = index_data.loc[index_data['finalised_quarter'] <= 42]
-#val_index = index_data.loc[(index_data['finalised_quarter'] > 42) & (index_data['finalised_quarter'] <= 48)]
-#test_index = index_data.loc[index_data['finalised_quarter'] > 48]
-
-#train_set = databoxes.loc[databoxes['claim_no'].isin(train_index['claim_no'])]
-#val_set = databoxes.loc[databoxes['claim_no'].isin(val_index['claim_no'])]
-#test_set = databoxes.loc[databoxes['claim_no'].isin(test_index['claim_no'])]
 
 # Valuation date is 40
 train_index = index_data.loc[index_data['finalised_quarter'] <= 36]
@@ -303,8 +302,10 @@ train_set = databoxes.loc[databoxes['claim_no'].isin(train_index['claim_no'])]
 val_set = databoxes.loc[databoxes['claim_no'].isin(val_index['claim_no'])]
 test_set = databoxes.loc[databoxes['claim_no'].isin(test_index['claim_no'])]
 
-
-### EXPORTING #################################################################
+# creating noIncurred versions
+train_set_noInc = train_set.loc[((train_set['txn_type'] != 'Ma') | (train_set['paid'] == 0)) & (train_set['txn_type'] != 'Mi')]
+val_set_noInc = val_set.loc[((val_set['txn_type'] != 'Ma') | (val_set['paid'] == 0)) & (val_set['txn_type'] != 'Mi')]
+test_set_noInc = test_set.loc[((test_set['txn_type'] != 'Ma') | (test_set['paid'] == 0)) & (test_set['txn_type'] != 'Mi')]
 
 # creating different sets for different model input versions
 
@@ -329,57 +330,126 @@ v2_test_set = test_set.loc[:, ['index', 'claim_no', 'pred_time', 'dev_time',
                                'cal_time', 'paid', 'ocl', 'is_payment', 
                                'is_major', 'is_minor', 'multiplier']]
 
-v1_train_index = train_index.loc[:, ['index', 'claim_no', 'pred_time', 
+
+if fp_covariates:
+    v1_train_index = train_index.loc[:, ['index', 'claim_no', 'pred_time', 
+                                         'dev_quarter', 'occ_quarter', 
+                                         'finalised_quarter', 'claim_size', 
+                                         'latest_incurred', 'm', 'log_m',
+                                         'true_ocl', 'log_true_ocl',
+                                         'Legal Representation', 'Injury Severity',
+                                         'Age of Claimant']]
+
+    v1_val_index = val_index.loc[:, ['index', 'claim_no', 'pred_time', 
+                                     'dev_quarter', 'occ_quarter', 
+                                     'finalised_quarter', 'claim_size', 
+                                     'latest_incurred', 'm', 'log_m',
+                                     'true_ocl', 'log_true_ocl',
+                                     'Legal Representation', 'Injury Severity',
+                                     'Age of Claimant']]
+
+    v1_test_index = test_index.loc[:, ['index', 'claim_no', 'pred_time', 
+                                       'dev_quarter', 'occ_quarter', 
+                                       'finalised_quarter', 'claim_size', 
+                                       'latest_incurred', 'm', 'log_m',
+                                       'true_ocl', 'log_true_ocl',
+                                       'Legal Representation', 'Injury Severity',
+                                       'Age of Claimant']]
+
+    v3_train_index = train_index.loc[:, ['index', 'claim_no', 'pred_time', 
+                                         'dev_quarter', 'occ_quarter', 
+                                         'finalised_quarter', 'claim_size', 
+                                         'latest_incurred', 'm', 'log_m',
+                                         'true_ocl', 'log_true_ocl', 
+                                         'num_payments', 'mean_payments', 
+                                         'var_payments', 'max_payment', 
+                                         'num_revisions', 'num_upward', 
+                                         'total_variation', 'Legal Representation', 
+                                         'Injury Severity', 'Age of Claimant']]
+
+    v3_val_index = val_index.loc[:, ['index', 'claim_no', 'pred_time', 
+                                     'dev_quarter', 'occ_quarter', 
+                                     'finalised_quarter', 'claim_size', 
+                                     'latest_incurred', 'm', 'log_m', 
+                                     'true_ocl', 'log_true_ocl',
+                                     'num_payments', 'mean_payments', 
+                                     'var_payments', 'max_payment',
+                                     'num_revisions', 'num_upward', 
+                                     'total_variation', 'Legal Representation', 
+                                     'Injury Severity', 'Age of Claimant']]
+
+    v3_test_index = test_index.loc[:, ['index', 'claim_no', 'pred_time', 
+                                       'dev_quarter', 'occ_quarter', 
+                                       'finalised_quarter', 'claim_size', 
+                                       'latest_incurred', 'm', 'log_m', 
+                                       'true_ocl', 'log_true_ocl',
+                                       'num_payments', 'mean_payments', 
+                                       'var_payments', 'max_payment', 
+                                       'num_revisions', 'num_upward', 
+                                       'total_variation', 'Legal Representation', 
+                                       'Injury Severity', 'Age of Claimant']]
+    
+else:
+    v1_train_index = train_index.loc[:, ['index', 'claim_no', 'pred_time', 
+                                         'dev_quarter', 'occ_quarter', 
+                                         'finalised_quarter', 'claim_size', 
+                                         'latest_incurred', 'm', 'log_m',
+                                         'true_ocl', 'log_true_ocl']]
+
+    v1_val_index = val_index.loc[:, ['index', 'claim_no', 'pred_time', 
                                      'dev_quarter', 'occ_quarter', 
                                      'finalised_quarter', 'claim_size', 
                                      'latest_incurred', 'm', 'log_m',
                                      'true_ocl', 'log_true_ocl']]
 
-v1_val_index = val_index.loc[:, ['index', 'claim_no', 'pred_time', 
-                                 'dev_quarter', 'occ_quarter', 
-                                 'finalised_quarter', 'claim_size', 
-                                 'latest_incurred', 'm', 'log_m',
-                                 'true_ocl', 'log_true_ocl']]
+    v1_test_index = test_index.loc[:, ['index', 'claim_no', 'pred_time', 
+                                       'dev_quarter', 'occ_quarter', 
+                                       'finalised_quarter', 'claim_size', 
+                                       'latest_incurred', 'm', 'log_m',
+                                       'true_ocl', 'log_true_ocl']]
 
-v1_test_index = test_index.loc[:, ['index', 'claim_no', 'pred_time', 
-                                   'dev_quarter', 'occ_quarter', 
-                                   'finalised_quarter', 'claim_size', 
-                                   'latest_incurred', 'm', 'log_m',
-                                   'true_ocl', 'log_true_ocl']]
+    v3_train_index = train_index.loc[:, ['index', 'claim_no', 'pred_time', 
+                                         'dev_quarter', 'occ_quarter', 
+                                         'finalised_quarter', 'claim_size', 
+                                         'latest_incurred', 'm', 'log_m',
+                                         'true_ocl', 'log_true_ocl', 
+                                         'num_payments', 'mean_payments', 
+                                         'var_payments', 'max_payment', 
+                                         'num_revisions', 'num_upward', 
+                                         'total_variation']]
 
-v3_train_index = train_index.loc[:, ['index', 'claim_no', 'pred_time', 
+    v3_val_index = val_index.loc[:, ['index', 'claim_no', 'pred_time', 
                                      'dev_quarter', 'occ_quarter', 
                                      'finalised_quarter', 'claim_size', 
-                                     'latest_incurred', 'm', 'log_m',
-                                     'true_ocl', 'log_true_ocl', 
+                                     'latest_incurred', 'm', 'log_m', 
+                                     'true_ocl', 'log_true_ocl',
                                      'num_payments', 'mean_payments', 
-                                     'var_payments', 'max_payment', 
+                                     'var_payments', 'max_payment',
                                      'num_revisions', 'num_upward', 
-                                     'total_variation',]]
+                                     'total_variation']]
 
-v3_val_index = val_index.loc[:, ['index', 'claim_no', 'pred_time', 
-                                 'dev_quarter', 'occ_quarter', 
-                                 'finalised_quarter', 'claim_size', 
-                                 'latest_incurred', 'm', 'log_m', 
-                                 'true_ocl', 'log_true_ocl',
-                                 'num_payments', 'mean_payments', 
-                                 'var_payments', 'max_payment',
-                                   'num_revisions', 'num_upward', 
-                                   'total_variation']]
+    v3_test_index = test_index.loc[:, ['index', 'claim_no', 'pred_time', 
+                                       'dev_quarter', 'occ_quarter', 
+                                       'finalised_quarter', 'claim_size', 
+                                       'latest_incurred', 'm', 'log_m', 
+                                       'true_ocl', 'log_true_ocl',
+                                       'num_payments', 'mean_payments', 
+                                       'var_payments', 'max_payment', 
+                                       'num_revisions', 'num_upward', 
+                                       'total_variation']]    
 
-v3_test_index = test_index.loc[:, ['index', 'claim_no', 'pred_time', 
-                                   'dev_quarter', 'occ_quarter', 
-                                   'finalised_quarter', 'claim_size', 
-                                   'latest_incurred', 'm', 'log_m', 
-                                   'true_ocl', 'log_true_ocl',
-                                   'num_payments', 'mean_payments', 
-                                   'var_payments', 'max_payment', 
-                                   'num_revisions', 'num_upward', 
-                                   'total_variation']]
+v1_train_set_noInc = train_set_noInc.loc[:, ['index', 'claim_no', 'pred_time', 
+                                             'dev_time', 'cal_time', 'paid', 
+                                             'ocl']]
+
+v1_val_set_noInc = val_set_noInc.loc[:, ['index', 'claim_no', 'pred_time', 
+                                         'dev_time', 'cal_time', 'paid', 'ocl']]
+
+v1_test_set_noInc = test_set_noInc.loc[:, ['index', 'claim_no', 'pred_time', 
+                                     'dev_time', 'cal_time', 'paid', 'ocl']]
 
 
-# Exporting to CSVs
-
+### EXPORTING #################################################################
 # V1
 v1_train_index.to_csv(fp_out_v1 + 'train_index.csv', index = False)
 v1_val_index.to_csv(fp_out_v1 + 'val_index.csv', index = False)
@@ -406,3 +476,12 @@ v3_test_index.to_csv(fp_out_v3 + 'test_index.csv', index = False)
 v2_train_set.to_csv(fp_out_v3 + 'train_set.csv', index = False)
 v2_val_set.to_csv(fp_out_v3 + 'val_set.csv', index = False)
 v2_test_set.to_csv(fp_out_v3 + 'test_set.csv', index = False)
+
+# No Incurred
+v1_train_index.to_csv(fp_out_v1_noInc + 'train_index.csv', index = False)
+v1_val_index.to_csv(fp_out_v1_noInc + 'val_index.csv', index = False)
+v1_test_index.to_csv(fp_out_v1_noInc + 'test_index.csv', index = False)
+
+v1_train_set_noInc.to_csv(fp_out_v1_noInc + 'train_set.csv', index = False)
+v1_val_set_noInc.to_csv(fp_out_v1_noInc + 'val_set.csv', index = False)
+v1_test_set_noInc.to_csv(fp_out_v1_noInc + 'test_set.csv', index = False)
