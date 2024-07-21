@@ -186,7 +186,7 @@ class ClaimsRNN(nn.Module):
 
     def __init__(self, nHidden, nLayers, nOut, version_no=1, type='RNN', 
                  nonlinearity='relu', output_layer='linear', dropout=0.0, 
-                 normalisation=None, include_incurreds=True, include_covariates=False):
+                 normalisation=True, include_incurreds=True, include_covariates=False):
         
         super(ClaimsRNN, self).__init__()
         self.nHidden = nHidden # number of hidden units
@@ -200,6 +200,7 @@ class ClaimsRNN(nn.Module):
         self.include_incurreds = include_incurreds # needs to match ClaimsDataset
         self.relu = nn.ReLU() # used for feed-forward hidden layer, should change this so different activation functions can be specified
         self.include_covariates = include_covariates
+        self.normalisation = normalisation # boolean for whether to use batch and layer normalisation
 
 
         # nFeatures is the number of features to be input into the RNN layer
@@ -209,12 +210,10 @@ class ClaimsRNN(nn.Module):
         elif self.version_no == 2 or self.version_no == 3:
             self.nFeatures = 8 # have to include incurred data if using version 2 or 3
 
-        # currently batch normalisation has been implemented, can add others
-        if normalisation == 'batch':
-            self.normalisation = nn.BatchNorm1d(self.nFeatures)
-
-        else:
-            self.normalisation = None
+        if self.normalisation:
+            self.layer_norm1 = nn.LayerNorm(self.nFeatures)
+            self.layer_norm2 = nn.LayerNorm(nHidden)
+            self.batch_norm1 = nn.BatchNorm1d(nHidden // 2)
 
         if type == 'RNN':
             self.rnn = nn.RNN(self.nFeatures, nHidden, nLayers, 
@@ -258,8 +257,8 @@ class ClaimsRNN(nn.Module):
 
     def forward(self, x):
 
-        if self.normalisation == 'batch':
-            x = self.normalisation(x)
+        #if self.normalisation:
+            #x[0] = self.layer_norm1(x[0])
 
         if self.version_no == 3:
             # x will be a tuple with the first element being the datapoints 
@@ -268,6 +267,9 @@ class ClaimsRNN(nn.Module):
 
             if self.type == 'LSTM':
                 ht = ht[0]
+
+            if self.normalisation:
+                ht = self.layer_norm2(ht)
 
             # Concatenating the extra features
             if self.include_covariates:
@@ -278,17 +280,15 @@ class ClaimsRNN(nn.Module):
                 out = torch.cat((ht[-1,:,:], 
                              x[1], x[2], x[3], x[4], x[5], x[6], x[7], x[8]), 1)
 
-            # Layer normalisation to ensure derived features have
-            # similar scale to RNN outputs
-            layer_norm = nn.LayerNorm(out.size()).to(device)
-            out = layer_norm(out)
-
         else:
             # x will be the packed datapoints
             out, ht = self.rnn(x[0])
 
             if self.type == 'LSTM':
                 ht = ht[0]
+
+            if self.normalisation:
+                ht = self.layer_norm2(ht)
 
             if self.include_covariates:
                 out = torch.cat((ht[-1,:,:], x[1], x[2], x[3], x[4]), 1)
@@ -297,6 +297,9 @@ class ClaimsRNN(nn.Module):
                 out = torch.cat((ht[-1,:,:], x[1]), 1)
 
         out = self.fc1(out)
+
+        if self.normalisation:
+            out = self.batch_norm1(out)
 
         # non-linear activation for feed-forward hidden layer
         out = self.relu(out)
