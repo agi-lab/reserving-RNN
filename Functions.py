@@ -54,7 +54,7 @@ class ClaimsDataset(Dataset):
     
     Notes: 
     - dataloader has to iterate from 0:len(dataset)
-    - all sequences are padded to a minimum length of 40
+    - all sequences are padded to a minimum length of 50
     """
 
     def __init__(self, target_col, index_path, set_path, version_no=1, 
@@ -110,12 +110,12 @@ class ClaimsDataset(Dataset):
 
             # Return padded data
             if self.include_covariates:
-                return (torch.nn.functional.pad(databox.float(), (0,0,0,40-nrows)), 
+                return (torch.nn.functional.pad(databox.float(), (0,0,0,50-nrows)), 
                     target, claim_size, latest_incurred, true_ocl, real_index, 
                     claim_no, pred_time, nrows, legal_rep, injury_severity, claimant_age)
 
             else:
-                return (torch.nn.functional.pad(databox.float(), (0,0,0,40-nrows)), 
+                return (torch.nn.functional.pad(databox.float(), (0,0,0,50-nrows)), 
                     target, claim_size, latest_incurred, true_ocl, real_index, 
                     claim_no, pred_time, nrows)
 
@@ -132,12 +132,12 @@ class ClaimsDataset(Dataset):
 
             # Return padded data
             if self.include_covariates:
-                return (torch.nn.functional.pad(databox.float(), (0,0,0,40-nrows)), 
+                return (torch.nn.functional.pad(databox.float(), (0,0,0,50-nrows)), 
                     target, claim_size, latest_incurred, true_ocl, real_index, 
                     claim_no, pred_time, nrows, legal_rep, injury_severity, claimant_age)
             
             else:
-                return (torch.nn.functional.pad(databox.float(), (0,0,0,40-nrows)), 
+                return (torch.nn.functional.pad(databox.float(), (0,0,0,50-nrows)), 
                     target, claim_size, latest_incurred, true_ocl, real_index, 
                     claim_no, pred_time, nrows)
 
@@ -162,14 +162,14 @@ class ClaimsDataset(Dataset):
 
             # Return padded data
             if self.include_covariates:
-                return (torch.nn.functional.pad(databox.float(), (0,0,0,40-nrows)),  
+                return (torch.nn.functional.pad(databox.float(), (0,0,0,50-nrows)),  
                     target, claim_size, latest_incurred, true_ocl, real_index, 
                     claim_no, pred_time, nrows, num_payments, mean_payments, 
                     var_payments, max_payment, num_revisions, num_upward, 
                     total_variation, legal_rep, injury_severity, claimant_age)
 
             else:
-                return (torch.nn.functional.pad(databox.float(), (0,0,0,40-nrows)),  
+                return (torch.nn.functional.pad(databox.float(), (0,0,0,50-nrows)),  
                     target, claim_size, latest_incurred, true_ocl, real_index, 
                     claim_no, pred_time, nrows, num_payments, mean_payments, 
                     var_payments, max_payment, num_revisions, num_upward, 
@@ -231,10 +231,15 @@ class ClaimsRNN(nn.Module):
         else:
             raise ValueError("type must be 'RNN', 'LSTM' or 'GRU'")
 
+        if self.include_covariates:
+            self.embedding_dim = 2
+            self.embedding_sev = nn.Embedding(6, self.embedding_dim) # 6 possible injury severities, output 2 dimensions
+            self.embedding_age = nn.Embedding(5, self.embedding_dim) # 5 possible ages, output 2 dimensions
+
         if version_no == 3:
             if self.include_covariates:
                 # +11 becuase we are adding 7 derived features into the fc layer + 3 covariates + 1 for pred time
-                self.fc1 = nn.Linear(nHidden + 11, nHidden // 2)
+                self.fc1 = nn.Linear(nHidden + 9 + 2 * self.embedding_dim, nHidden // 2)
 
             else:
                 # +8 becuase we are adding 7 derived features into the fc layer + 1 for pred time
@@ -242,8 +247,8 @@ class ClaimsRNN(nn.Module):
 
         else:
             if self.include_covariates:
-                # +4 becuase we are adding 3 covariates into the fc layer + 1 for pred time
-                self.fc1 = nn.Linear(nHidden + 4, nHidden // 2)
+                # +6 becuase we are adding 3 covariates (1 direct, 2 after embedding into vectors of size 2 each) into the fc layer + 1 for pred time
+                self.fc1 = nn.Linear(nHidden + 2 + 2 * self.embedding_dim, nHidden // 2)
 
             else:
                 # +1 for pred time
@@ -291,7 +296,10 @@ class ClaimsRNN(nn.Module):
                 ht = self.layer_norm2(ht)
 
             if self.include_covariates:
-                out = torch.cat((ht[-1,:,:], x[1], x[2], x[3], x[4]), 1)
+                sev_embed = self.embedding_sev(x[3].long())
+                age_embed = self.embedding_age(x[4].long())
+
+                out = torch.cat((ht[-1,:,:], x[1], x[2], sev_embed[:, -1, :], age_embed[:, -1, :]), 1)
 
             else:
                 out = torch.cat((ht[-1,:,:], x[1]), 1)

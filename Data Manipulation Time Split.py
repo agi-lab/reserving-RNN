@@ -11,10 +11,6 @@
 # Takes simulated SPLICE output from R, converts it into a 'set' and 'index' 
 # csv file, splits into training and test sets and stores them in csvs
 
-#For each R output, creates files of versions V1 (cal_time, dev_time, cumpaid, 
-# ocl), V2 (V1 + txn_type, multiplier) and V3 (V2 into RNN layers + rest of 
-# derived features into FC layer)
-
 # Only difference between this an 'Data Manipulation.py' is that this file
 # splits the data by both claim and by time
 
@@ -29,21 +25,17 @@ import pathlib
 
 # filepaths noInf
 fp_in = 'Datasets/R Outputs/data_noInf_cov_TRUE_seed_20201006.csv'
-#fp_covariates = 'Datasets/R Outputs/covariate_data_seed_20201006.csv'
 
 #fp_in = 'Datasets/R Outputs/test_incurred_dataset_noInf.csv'
-fp_covariates = ''
 
 fp_out_v1 = 'Datasets/Python Inputs/V1/noInf Triangular WithInc/'
-fp_out_v2 = 'Datasets/Python Inputs/V2/noInf Triangular WithInc/'
-fp_out_v3 = 'Datasets/Python Inputs/V3/noInf Triangular WithInc/'
 fp_out_v1_noInc = 'Datasets/Python Inputs/V1/noInf Triangular NoInc/'
 
 
 ### FUNCTIONS #################################################################
 def get_ultimate(row):
     '''Finds the ultimate claim cost for the given claim for a particular row'''
-    return data.loc[data['claim_no'] == row['claim_no'], ['cumpaid']].max()
+    return data.loc[data['claim_no'] == row['claim_no'], ['cumpaid']].iloc[-1]
 
 def get_incurred(row):
     '''Finds the estimated incurred claim cost for the given claim for a 
@@ -51,25 +43,9 @@ def get_incurred(row):
     return data.loc[(data['claim_no'] == row['claim_no']) & 
                     (data['txn_time'] < row['c']), ['incurred']].iloc[-1]
 
-def get_num_payments(row):
-    return payment_rows.loc[(payment_rows['claim_no'] == row['claim_no']) & 
-                            (payment_rows['txn_time'] <= row['c'])].shape[0]
-
-def get_mean_payments(row):
-    return payment_rows.loc[(payment_rows['claim_no'] == row['claim_no']) & 
-                            (payment_rows['txn_time'] <= row['c'])]['payments'].mean()
-
-def get_var_payments(row):
-    return payment_rows.loc[(payment_rows['claim_no'] == row['claim_no']) & 
-                            (payment_rows['txn_time'] <= row['c'])]['payments'].var()
-
-def get_max_payments(row):
-    return payment_rows.loc[(payment_rows['claim_no'] == row['claim_no']) & 
-                            (payment_rows['txn_time'] <= row['c'])]['payments'].max()
-
 def get_cumpaid(row):
     return payment_rows.loc[(payment_rows['claim_no'] == row['claim_no']) & 
-                            (payment_rows['txn_time'] <= row['c'])]['cumpaid'].max()
+                            (payment_rows['txn_time'] <= row['c']), ['cumpaid']].max()
 
 def get_case_estimate(row):
     temp = data.loc[(data['claim_no'] == row['claim_no']) & 
@@ -78,31 +54,20 @@ def get_case_estimate(row):
     return temp.loc[(temp['txn_time'] == max(temp['txn_time'])), 
                     'incurred'].iloc[0]
 
-def get_num_revisions(row):
-    return revision_rows.loc[(revision_rows['claim_no'] == row['claim_no']) & 
-                             (revision_rows['txn_time'] <= row['c'])].shape[0]
-
-def get_upward_revisions(row):
-    temp = revision_rows.loc[(revision_rows['claim_no'] == row['claim_no']) & 
-                             (revision_rows['txn_time'] <= row['c'])]
-    
-    temp['revision'] = temp['incurred'].diff()
-    return temp.loc[temp['revision'] > 0].shape[0]
-
-def get_total_variation(row):
-    temp = revision_rows.loc[(revision_rows['claim_no'] == row['claim_no']) & 
-                             (revision_rows['txn_time'] <= row['c'])]
-    
-    init_est = temp.loc[(temp['txn_time'] == min(temp['txn_time'])), 
-                        'incurred'].iloc[0]
-    
-    cur_est = temp.loc[(temp['txn_time'] == max(temp['txn_time'])), 
-                       'incurred'].iloc[0]
-    
-    return cur_est - init_est
-
 def get_finalised_quarter(row):
-    return data.loc[data['claim_no'] == row['claim_no'], 'txn_time'].max()
+    return data.loc[data['claim_no'] == row['claim_no'], ['txn_time']].iloc[-1]
+
+def get_legal_rep(row):
+    return data.loc[(data['claim_no'] == row['claim_no']) & 
+                    (data['txn_time'] < row['c']), ['Legal Representation']].iloc[-1]
+
+def get_injury_sev(row):
+    return data.loc[(data['claim_no'] == row['claim_no']) & 
+                    (data['txn_time'] < row['c']), ['Injury Severity']].iloc[-1]
+    
+def get_age(row):
+    return data.loc[(data['claim_no'] == row['claim_no']) & 
+                    (data['txn_time'] < row['c']), ['Age of Claimant']].iloc[-1]
 
 ### DATA MANIPULATION #########################################################
 
@@ -149,26 +114,17 @@ index_data['claim_size'] = index_data.apply(get_ultimate, axis = 1)
 index_data['incurred'] = index_data.apply(get_incurred, axis = 1)
 index_data['case_estimate'] = index_data.apply(get_case_estimate, axis = 1)
 
+index_data['Legal Representation'] = index_data.apply(get_legal_rep, axis = 1)
+index_data['Injury Severity'] = index_data.apply(get_injury_sev, axis = 1)
+index_data['Age of Claimant'] = index_data.apply(get_age, axis = 1)
+
 # Finding rows in original dataset that involve payments
 payment_rows = data.loc[(data['txn_type'] == 'P') | 
                         (data['txn_type'] == 'PMi') | 
                         (data['txn_type'] == 'PMa')]
 
 # Adding payment data
-index_data['num_payments'] = index_data.apply(get_num_payments, axis = 1)
-index_data['mean_payments'] = index_data.apply(get_mean_payments, axis = 1)
-index_data['var_payments'] = index_data.apply(get_var_payments, axis = 1)
-index_data['max_payment'] = index_data.apply(get_max_payments, axis = 1)
 index_data['cumpaid'] = index_data.apply(get_cumpaid, axis = 1)
-
-
-# Finding rows in original dataset that involve revisions
-revision_rows = data.loc[(data['txn_type'] != 'P')]
-
-# Adding revisions data
-index_data['num_revisions'] = index_data.apply(get_num_revisions, axis = 1)
-index_data['num_upward'] = index_data.apply(get_upward_revisions, axis = 1)
-index_data['total_variation'] = index_data.apply(get_total_variation, axis = 1)
 
 # Adding indexes to index set
 index_data['index'] = index_data.index
@@ -186,7 +142,7 @@ for i in range(len(index_data)):
     # subset claims from original dataset
     temp = data.loc[data['claim_no'] == index_data.iloc[i]['claim_no'], 
                     ['claim_no', 'txn_time', 'txn_delay', 'txn_type', 
-                     'incurred', 'OCL', 'cumpaid', 'multiplier']]
+                     'incurred', 'OCL', 'cumpaid']]
 
     # Loop over rows in original dataset
     for j in range(len(temp)):
@@ -201,8 +157,7 @@ for i in range(len(index_data)):
 databoxes = pd.DataFrame(databoxes_list, columns = ['index', 'c', 'claim_no', 
                                                     'txn_time', 'txn_delay', 
                                                     'txn_type', 'incurred', 
-                                                    'OCL', 'cumpaid', 
-                                                    'multiplier'])
+                                                    'OCL', 'cumpaid'])
 
 index_data['cumpaid'] = index_data['cumpaid'].fillna(0)
 
@@ -219,18 +174,6 @@ databoxes.rename(columns = {'c': 'pred_time', 'txn_time': 'cal_time',
 index_data = index_data.fillna(-1)
 databoxes = databoxes.fillna(-1)
 
-
-# converting txn_type into numeric features (is_payment, is_major, is_minor)
-databoxes['is_payment'] = [1 if (element == 'P' or 
-                                 element == 'PMi' or 
-                                 element == 'PMa') else 0 
-                                 for element in databoxes['txn_type']]
-
-databoxes['is_major'] = [1 if (element == 'Ma' or element == 'PMa') else 0 
-                         for element in databoxes['txn_type']]
-databoxes['is_minor'] = [1 if (element == 'Mi' or element == 'PMi') else 0 
-                         for element in databoxes['txn_type']]
-
 # rename columns
 databoxes.rename(columns = {'cumpaid': 'paid', 'OCL': 'ocl'}, inplace = True)
 index_data.rename(columns = {'incurred': 'latest_incurred'}, inplace = True)
@@ -238,58 +181,14 @@ index_data.rename(columns = {'incurred': 'latest_incurred'}, inplace = True)
 # Some claim reports have payments really close to 0, need to set these to exactly 0
 databoxes.loc[databoxes['paid'] < 0.01, 'paid'] = 0
 
-# adding covariate data to index file if it exists
-if fp_covariates:
-    covariates = pd.read_csv(fp_covariates)
-    testing = pd.concat([index_data, covariates], axis=1)
-# ISSUE: TESTING ONLY HAS 1 ROW PER CLAIM, INDEX HAS 1 ROW PER OBSERVATION
+# Binary encode legal rep covariate
+index_data['Legal Representation'].replace({'Y': 1, 'N': 0}, inplace=True)
 
+# Ordinal encode age covariate
+index_data['Age of Claimant'].replace({'0-15': 0, '15-30': 2, '30-50': 2, '50-65': 3, 'over 65': 4}, inplace=True)
 
-# observation level
-#import matplotlib.pyplot as plt
-#plt.hist(index_data['finalised_quarter'], bins = 20)
-#plt.show()
-
-#print(f"max occurrence quarter: {index_data['occ_quarter'].max()}")
-#print(f"max finalisation quarter: {index_data['finalised_quarter'].max()}")
-
-#print(f"# Observations finalised after quarter 48: {sum(index_data['finalised_quarter'] > 48)}")
-#print(f"# Observations finalised between quarters 42 and 48: {sum((index_data['finalised_quarter'] > 42) & (index_data['finalised_quarter'] <= 48))}")
-#print(f"# Observations finalised before and including quarter 42: {sum(index_data['finalised_quarter'] <= 42)}")
-
-#print(f"prop Observations finalised after quarter 48: {np.mean(index_data['finalised_quarter'] > 48):.3f}")
-#print(f"# Observations finalised between quarters 42 and 48: {np.mean((index_data['finalised_quarter'] > 42) & (index_data['finalised_quarter'] <= 48)):.3f}")
-#print(f"prop Observations finalised before and including quarter 42: {np.mean(index_data['finalised_quarter'] <= 42):.3f}")
-
-# claim level
-#plt.hist(index_data.groupby('claim_no').last()['finalised_quarter'])
-#plt.show()
-
-#print(f"# Claims finalised after quarter 48: {sum(index_data.groupby('claim_no').last()['finalised_quarter'] > 48)}")
-#print(f"# Claims finalised between quarters 42 and 48: {sum((index_data.groupby('claim_no').last()['finalised_quarter'] > 42) & (index_data.groupby('claim_no').last()['finalised_quarter'] <= 48))}")
-#print(f"# Claims finalised before and including quarter 48: {sum(index_data.groupby('claim_no').last()['finalised_quarter'] <= 48)}")
-
-#print(f" prop Claims finalised after quarter 48: {np.mean(index_data.groupby('claim_no').last()['finalised_quarter'] > 48):.3f}")
-#print(f" prop Claims finalised between quarters 42 and 48: {np.mean((index_data.groupby('claim_no').last()['finalised_quarter'] > 42) & (index_data.groupby('claim_no').last()['finalised_quarter'] <= 48)):.3f}")
-#print(f" prop Claims finalised before and including quarter 42: {np.mean(index_data.groupby('claim_no').last()['finalised_quarter'] <= 42):.3f}")
-
-
-# checking proportions at cal time 40 (this should be true valuation date)
-#print(f"# Observations finalised after quarter 40: {sum(index_data['finalised_quarter'] > 40)}")
-#print(f"# Observations finalised between quarters 36 and 40: {sum((index_data['finalised_quarter'] > 36) & (index_data['finalised_quarter'] <= 40))}")
-#print(f"# Observations finalised before and including quarter 36: {sum(index_data['finalised_quarter'] <= 36)}")
-
-#print(f"prop Observations finalised after quarter 40: {np.mean(index_data['finalised_quarter'] > 40):.3f}")
-#print(f"# Observations finalised between quarters 36 and 40: {np.mean((index_data['finalised_quarter'] > 36) & (index_data['finalised_quarter'] <= 40)):.3f}")
-#print(f"prop Observations finalised before and including quarter 36: {np.mean(index_data['finalised_quarter'] <= 36):.3f}")
-
-#print(f"# Claims finalised after quarter 40: {sum(index_data.groupby('claim_no').last()['finalised_quarter'] > 40)}")
-#print(f"# Claims finalised between quarters 36 and 40: {sum((index_data.groupby('claim_no').last()['finalised_quarter'] > 36) & (index_data.groupby('claim_no').last()['finalised_quarter'] <= 40))}")
-#print(f"# Claims finalised before and including quarter 40: {sum(index_data.groupby('claim_no').last()['finalised_quarter'] <= 40)}")
-
-#print(f" prop Claims finalised after quarter 40: {np.mean(index_data.groupby('claim_no').last()['finalised_quarter'] > 40):.3f}")
-#print(f" prop Claims finalised between quarters 36 and 40: {np.mean((index_data.groupby('claim_no').last()['finalised_quarter'] > 36) & (index_data.groupby('claim_no').last()['finalised_quarter'] <= 40)):.3f}")
-#print(f" prop Claims finalised before and including quarter 36: {np.mean(index_data.groupby('claim_no').last()['finalised_quarter'] <= 36):.3f}")
+# Make injury severity go from 0-5 instead of 1-6 so it works with embeddings
+index_data['Injury Severity'] = index_data['Injury Severity'] - 1
 
 ### TRAIN TEST SPLIT ##########################################################
 
@@ -318,29 +217,7 @@ v1_val_set = val_set.loc[:, ['index', 'claim_no', 'pred_time', 'dev_time',
 v1_test_set = test_set.loc[:, ['index', 'claim_no', 'pred_time', 'dev_time', 
                                'cal_time', 'paid', 'ocl']]
 
-v2_train_set = train_set.loc[:, ['index', 'claim_no', 'pred_time', 'dev_time', 
-                                 'cal_time', 'paid', 'ocl', 'is_payment', 
-                                 'is_major', 'is_minor', 'multiplier']]
-
-v2_val_set = val_set.loc[:, ['index', 'claim_no', 'pred_time', 'dev_time', 
-                             'cal_time', 'paid', 'ocl', 'is_payment', 
-                             'is_major', 'is_minor', 'multiplier']]
-
-v2_test_set = test_set.loc[:, ['index', 'claim_no', 'pred_time', 'dev_time', 
-                               'cal_time', 'paid', 'ocl', 'is_payment', 
-                               'is_major', 'is_minor', 'multiplier']]
-
-
-if fp_covariates:
-    v1_train_index = train_index.loc[:, ['index', 'claim_no', 'pred_time', 
-                                         'dev_quarter', 'occ_quarter', 
-                                         'finalised_quarter', 'claim_size', 
-                                         'latest_incurred', 'm', 'log_m',
-                                         'true_ocl', 'log_true_ocl',
-                                         'Legal Representation', 'Injury Severity',
-                                         'Age of Claimant']]
-
-    v1_val_index = val_index.loc[:, ['index', 'claim_no', 'pred_time', 
+v1_train_index = train_index.loc[:, ['index', 'claim_no', 'pred_time', 
                                      'dev_quarter', 'occ_quarter', 
                                      'finalised_quarter', 'claim_size', 
                                      'latest_incurred', 'm', 'log_m',
@@ -348,95 +225,21 @@ if fp_covariates:
                                      'Legal Representation', 'Injury Severity',
                                      'Age of Claimant']]
 
-    v1_test_index = test_index.loc[:, ['index', 'claim_no', 'pred_time', 
-                                       'dev_quarter', 'occ_quarter', 
-                                       'finalised_quarter', 'claim_size', 
-                                       'latest_incurred', 'm', 'log_m',
-                                       'true_ocl', 'log_true_ocl',
-                                       'Legal Representation', 'Injury Severity',
-                                       'Age of Claimant']]
+v1_val_index = val_index.loc[:, ['index', 'claim_no', 'pred_time', 
+                                 'dev_quarter', 'occ_quarter', 
+                                 'finalised_quarter', 'claim_size', 
+                                 'latest_incurred', 'm', 'log_m',
+                                 'true_ocl', 'log_true_ocl',
+                                 'Legal Representation', 'Injury Severity',
+                                 'Age of Claimant']]
 
-    v3_train_index = train_index.loc[:, ['index', 'claim_no', 'pred_time', 
-                                         'dev_quarter', 'occ_quarter', 
-                                         'finalised_quarter', 'claim_size', 
-                                         'latest_incurred', 'm', 'log_m',
-                                         'true_ocl', 'log_true_ocl', 
-                                         'num_payments', 'mean_payments', 
-                                         'var_payments', 'max_payment', 
-                                         'num_revisions', 'num_upward', 
-                                         'total_variation', 'Legal Representation', 
-                                         'Injury Severity', 'Age of Claimant']]
-
-    v3_val_index = val_index.loc[:, ['index', 'claim_no', 'pred_time', 
-                                     'dev_quarter', 'occ_quarter', 
-                                     'finalised_quarter', 'claim_size', 
-                                     'latest_incurred', 'm', 'log_m', 
-                                     'true_ocl', 'log_true_ocl',
-                                     'num_payments', 'mean_payments', 
-                                     'var_payments', 'max_payment',
-                                     'num_revisions', 'num_upward', 
-                                     'total_variation', 'Legal Representation', 
-                                     'Injury Severity', 'Age of Claimant']]
-
-    v3_test_index = test_index.loc[:, ['index', 'claim_no', 'pred_time', 
-                                       'dev_quarter', 'occ_quarter', 
-                                       'finalised_quarter', 'claim_size', 
-                                       'latest_incurred', 'm', 'log_m', 
-                                       'true_ocl', 'log_true_ocl',
-                                       'num_payments', 'mean_payments', 
-                                       'var_payments', 'max_payment', 
-                                       'num_revisions', 'num_upward', 
-                                       'total_variation', 'Legal Representation', 
-                                       'Injury Severity', 'Age of Claimant']]
-    
-else:
-    v1_train_index = train_index.loc[:, ['index', 'claim_no', 'pred_time', 
-                                         'dev_quarter', 'occ_quarter', 
-                                         'finalised_quarter', 'claim_size', 
-                                         'latest_incurred', 'm', 'log_m',
-                                         'true_ocl', 'log_true_ocl']]
-
-    v1_val_index = val_index.loc[:, ['index', 'claim_no', 'pred_time', 
-                                     'dev_quarter', 'occ_quarter', 
-                                     'finalised_quarter', 'claim_size', 
-                                     'latest_incurred', 'm', 'log_m',
-                                     'true_ocl', 'log_true_ocl']]
-
-    v1_test_index = test_index.loc[:, ['index', 'claim_no', 'pred_time', 
-                                       'dev_quarter', 'occ_quarter', 
-                                       'finalised_quarter', 'claim_size', 
-                                       'latest_incurred', 'm', 'log_m',
-                                       'true_ocl', 'log_true_ocl']]
-
-    v3_train_index = train_index.loc[:, ['index', 'claim_no', 'pred_time', 
-                                         'dev_quarter', 'occ_quarter', 
-                                         'finalised_quarter', 'claim_size', 
-                                         'latest_incurred', 'm', 'log_m',
-                                         'true_ocl', 'log_true_ocl', 
-                                         'num_payments', 'mean_payments', 
-                                         'var_payments', 'max_payment', 
-                                         'num_revisions', 'num_upward', 
-                                         'total_variation']]
-
-    v3_val_index = val_index.loc[:, ['index', 'claim_no', 'pred_time', 
-                                     'dev_quarter', 'occ_quarter', 
-                                     'finalised_quarter', 'claim_size', 
-                                     'latest_incurred', 'm', 'log_m', 
-                                     'true_ocl', 'log_true_ocl',
-                                     'num_payments', 'mean_payments', 
-                                     'var_payments', 'max_payment',
-                                     'num_revisions', 'num_upward', 
-                                     'total_variation']]
-
-    v3_test_index = test_index.loc[:, ['index', 'claim_no', 'pred_time', 
-                                       'dev_quarter', 'occ_quarter', 
-                                       'finalised_quarter', 'claim_size', 
-                                       'latest_incurred', 'm', 'log_m', 
-                                       'true_ocl', 'log_true_ocl',
-                                       'num_payments', 'mean_payments', 
-                                       'var_payments', 'max_payment', 
-                                       'num_revisions', 'num_upward', 
-                                       'total_variation']]    
+v1_test_index = test_index.loc[:, ['index', 'claim_no', 'pred_time', 
+                                   'dev_quarter', 'occ_quarter', 
+                                   'finalised_quarter', 'claim_size', 
+                                   'latest_incurred', 'm', 'log_m',
+                                   'true_ocl', 'log_true_ocl',
+                                   'Legal Representation', 'Injury Severity',
+                                   'Age of Claimant']]
 
 v1_train_set_noInc = train_set_noInc.loc[:, ['index', 'claim_no', 'pred_time', 
                                              'dev_time', 'cal_time', 'paid', 
@@ -459,24 +262,6 @@ v1_train_set.to_csv(fp_out_v1 + 'train_set.csv', index = False)
 v1_val_set.to_csv(fp_out_v1 + 'val_set.csv', index = False)
 v1_test_set.to_csv(fp_out_v1 + 'test_set.csv', index = False)
 
-# V2
-v1_train_index.to_csv(fp_out_v2 + 'train_index.csv', index = False)
-v1_val_index.to_csv(fp_out_v2 + 'val_index.csv', index = False)
-v1_test_index.to_csv(fp_out_v2 + 'test_index.csv', index = False)
-
-v2_train_set.to_csv(fp_out_v2 + 'train_set.csv', index = False)
-v2_val_set.to_csv(fp_out_v2 + 'val_set.csv', index = False)
-v2_test_set.to_csv(fp_out_v2 + 'test_set.csv', index = False)
-
-# V3
-v3_train_index.to_csv(fp_out_v3 + 'train_index.csv', index = False)
-v3_val_index.to_csv(fp_out_v3 + 'val_index.csv', index = False)
-v3_test_index.to_csv(fp_out_v3 + 'test_index.csv', index = False)
-
-v2_train_set.to_csv(fp_out_v3 + 'train_set.csv', index = False)
-v2_val_set.to_csv(fp_out_v3 + 'val_set.csv', index = False)
-v2_test_set.to_csv(fp_out_v3 + 'test_set.csv', index = False)
-
 # No Incurred
 v1_train_index.to_csv(fp_out_v1_noInc + 'train_index.csv', index = False)
 v1_val_index.to_csv(fp_out_v1_noInc + 'val_index.csv', index = False)
@@ -485,3 +270,6 @@ v1_test_index.to_csv(fp_out_v1_noInc + 'test_index.csv', index = False)
 v1_train_set_noInc.to_csv(fp_out_v1_noInc + 'train_set.csv', index = False)
 v1_val_set_noInc.to_csv(fp_out_v1_noInc + 'val_set.csv', index = False)
 v1_test_set_noInc.to_csv(fp_out_v1_noInc + 'test_set.csv', index = False)
+
+# checking max sequence length (whether to increase the limit for the model)
+#databoxes.groupby('index').count().sort_values('claim_no', ascending = False)

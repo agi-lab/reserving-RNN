@@ -4,6 +4,7 @@
 
 
 library(SPLICE)
+library(data.table)
 
 seed <- 20201006
 with_cov = TRUE
@@ -71,13 +72,26 @@ generate_dataset <- function(seed, with_cov, fp) {
   # transactional data
   test_incurred_dataset_noInf <- generate_incurred_dataset(test_claims, test)
   
+  test_incurred_dataset_noInf <- data.table(test_incurred_dataset_noInf)
+  
+  
+  # append covariate values to each row in the main dataset
+  if (with_cov) {
+    covariates_features <- data.table(covariates_data_obj$data)
+    
+    nrows = as.vector(table(test_incurred_dataset_noInf[, claim_no]))
+    covariates_features[, nrows := nrows]
+
+    test_incurred_dataset_noInf <- cbind(test_incurred_dataset_noInf, 
+                                         covariates_features[rep(1:.N, nrows)])
+    
+    # remove unnecessary columns
+    test_incurred_dataset_noInf[, c("multiplier", "nrows") := NULL]
+  }
+  
+  
   write.csv(test_incurred_dataset_noInf, paste0(fp, 'data_noInf_cov_', with_cov, 
                                                 '_seed_', seed, '.csv'))
-  
-  if (with_cov) {
-    write.csv(covariates_data_obj$data, paste0(fp, 'covariate_data_seed_',
-                                               seed, '.csv'))
-  }
   
 }
 
