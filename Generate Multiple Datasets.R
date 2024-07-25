@@ -8,16 +8,15 @@ library(ChainLadder)
 source("Generate Dataset.R")
 
 fp <- 'C:/Users/matty/OneDrive/MCOM/Research Report/Matt Model/Datasets/R Outputs/'
-max_iter <- 10
+max_iter <- 100
 seed_base <- 2024
 with_cov = TRUE
+for_aggregate = FALSE
 
 # Data Generation
 for (iter in 1:max_iter) {
   generate_dataset(seed_base + iter, with_cov, fp)
 }
-
-
 
 
 
@@ -31,81 +30,46 @@ cl_paid_OCLs <- rep(0, max_iter)
 cl_incurred_OCLs <- rep(0, max_iter)
 pic_OCLs <- rep(0, max_iter)
 
+for_aggregate = TRUE
+
 for (iter in 1:max_iter) {
   set.seed(seed_base + iter)
-  
-  # Claim Occurrence
-  n_vector <- claim_frequency(E = 36000, freq = 0.03)
-  occurrence_times <- claim_occurrence(frequency_vector = n_vector)
-  
-  # Claim Size
-  claim_sizes <- claim_size(frequency_vector = n_vector)
-  
-  # Claim Notification
-  notidel <- claim_notification(n_vector, claim_sizes)
-  
-  # Claim Closure
-  setldel <- claim_closure(n_vector, claim_sizes)
-  
-  # Partial Payments
-  no_payments <- claim_payment_no(n_vector, claim_sizes)
-  payment_sizes <- claim_payment_size(n_vector, claim_sizes, no_payments)
-  
-  # Claim Payment Time
-  payment_delays <- claim_payment_delay(n_vector, claim_sizes, 
-                                        no_payments, setldel)
-  
-  payment_times <- claim_payment_time(n_vector, occurrence_times, 
-                                      notidel, payment_delays)
-  
-  # Claim Inflation
-  payment_inflated <- claim_payment_inflation(n_vector, payment_sizes,
-                                              payment_times, occurrence_times,
-                                              claim_sizes)
-  
-  test_claims <- claims(n_vector, occurrence_times, claim_sizes, notidel, 
-                        setldel, no_payments, payment_sizes, payment_delays, 
-                        payment_times, payment_inflated)
-  
-  
-  # major revisions
-  major <- claim_majRev_freq(test_claims)
-  major <- claim_majRev_time(test_claims, major)
-  major <- claim_majRev_size(major)
-  
-  # minor revisions
-  minor <- claim_minRev_freq(test_claims)
-  minor <- claim_minRev_time(test_claims, minor)
-  minor <- claim_minRev_size(test_claims, major, minor)
-  
-  # development of case estimates
-  test <- claim_history(test_claims, major, minor)
+
+  aggregate_data <- generate_dataset(seed, with_cov, fp, for_aggregate)
   
   # Converting individual data to aggregate
   
-  incurred_cumulative_triangle = output_incurred(test, 
-                                                 aggregate_level = 2,
+  incurred_cumulative_triangle = output_incurred(aggregate_data$test, 
+                                                 aggregate_level = 1,
                                                  incremental = F, 
                                                  future = F)
   
-  payments_cumulative_triangle = claim_output(test_claims$frequency_vector, 
-                                              test_claims$payment_time_list, 
-                                              test_claims$payment_size_list, 
-                                              aggregate_level = 2, 
+  payments_cumulative_triangle = claim_output(aggregate_data$test_claims$frequency_vector, 
+                                              aggregate_data$test_claims$payment_time_list, 
+                                              aggregate_data$test_claims$payment_size_list, 
+                                              aggregate_level = 1, 
                                               incremental = F, 
                                               future = F)
   
-  #incurred_cumulative_square = output_incurred(test, 
-  #                                             aggregate_level = 2, 
+  #incurred_cumulative_square = output_incurred(aggregate_data$test, 
+  #                                             aggregate_level = 1, 
   #                                             incremental = F, 
   #                                             future = T)
   
-  payments_cumulative_square = claim_output(test_claims$frequency_vector, 
-                                            test_claims$payment_time_list, 
-                                            test_claims$payment_size_list, 
-                                            aggregate_level = 2, 
+  payments_cumulative_square = claim_output(aggregate_data$test_claims$frequency_vector, 
+                                            aggregate_data$test_claims$payment_time_list, 
+                                            aggregate_data$test_claims$payment_size_list, 
+                                            aggregate_level = 1, 
                                             incremental = F, 
                                             future = T)
+  
+  # testing whether datasets can be used at a quarter level for aggregate models
+  if (0 %in% payments_cumulative_triangle[, 1]) {
+    print(paste0('seed ', seed_base + iter, ' contains 0s in DQ1'))
+  }
+  
+  else {print(paste0('seed ', seed_base + iter, ' is fine'))}
+}
   
   # Munich Chain Ladder
   
@@ -116,7 +80,7 @@ for (iter in 1:max_iter) {
   mcl_ultimate_paid = summary(mcl)$Totals$Paid[2]
   mcl_ultimate_incurred = summary(mcl)$Totals$Incurred[2]
   
-  actual_ultimate_paid = sum(payments_cumulative_square[, 20])
+  actual_ultimate_paid = sum(payments_cumulative_square[, 40])
   
   latest_paid = summary(mcl)$Totals$Paid[1]
   latest_incurred = summary(mcl)$Totals$Incurred[1]
@@ -128,12 +92,12 @@ for (iter in 1:max_iter) {
   
   # Paid Chain Ladder
   cl_paid = chainladder(payments_cumulative_triangle)
-  cl_ultimate_paid = sum(predict(cl_paid)[, 20])
+  cl_ultimate_paid = sum(predict(cl_paid)[, 40])
   cl_paid_OCLs[iter] = cl_ultimate_paid - latest_paid
   
   # Incurred Chain Ladder
   cl_incurred = chainladder(incurred_cumulative_triangle)
-  cl_ultimate_incurred = sum(predict(cl_incurred)[, 20])
+  cl_ultimate_incurred = sum(predict(cl_incurred)[, 40])
   cl_incurred_OCLs[iter] = cl_ultimate_incurred - latest_paid
   
   # Paid-Incurred Chain

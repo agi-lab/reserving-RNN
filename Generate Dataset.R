@@ -9,14 +9,26 @@ library(data.table)
 seed <- 20201006
 with_cov = TRUE
 fp <- 'C:/Users/matty/OneDrive/MCOM/Research Report/Matt Model/Datasets/R Outputs/'
+for_aggregate = FALSE
 
-generate_dataset <- function(seed, with_cov, fp) {
-  # with_cov is a boolean for whether to simulate covariates (True) or not (False)
+generate_dataset <- function(seed, with_cov, fp, for_aggregate) {
+  # 'with_cov' is a boolean for whether to simulate covariates (True) or not (False)
+  
+  # Should generate a dataset with and without covariates under the same seed to 
+  # make sure that the covariates are actually affecting the simulated 
+  # claim sizes, payments and revisions.
+  
+  # When using the dataset for modelling, it should be simulated with covariate 
+  # data (even if the model does not use the covariate data)
+  
+  # 'for_aggregate' is a boolean specifying whether the generated data is to be 
+  # used for an aggregate model (e.g. Chain Ladder) or for an individual model (e.g. our RNN)
   
   set.seed(seed)
 
-  # Claim Occurrence (claim numbers increased from default by a factor of 3)
-  n_vector <- claim_frequency(E = 36000, freq = 0.03)
+  # Claim Occurrence (Default exposure is 12k, so our frequency should be around 
+  # 67% higher than default)
+  n_vector <- claim_frequency(E = 20000, freq = 0.03)
   occurrence_times <- claim_occurrence(frequency_vector = n_vector)
   
   # Claim Size
@@ -68,6 +80,14 @@ generate_dataset <- function(seed, with_cov, fp) {
   # development of case estimates
   test <- claim_history(test_claims, major, minor)
   
+  # Output data for triangles
+  if (for_aggregate) {
+    aggregate_data <- list(test = test, test_claims = test_claims)
+    return(aggregate_data)
+    
+  }
+  
+  # Otherwise output data for individual models
   
   # transactional data
   test_incurred_dataset_noInf <- generate_incurred_dataset(test_claims, test)
@@ -95,4 +115,4 @@ generate_dataset <- function(seed, with_cov, fp) {
   
 }
 
-generate_dataset(seed, with_cov, fp)
+generate_dataset(seed, with_cov, fp, for_aggregate)
