@@ -57,16 +57,21 @@ class ClaimsDataset(Dataset):
     - all sequences are padded to a minimum length of 50
     """
 
-    def __init__(self, target_col, index_path, set_path, version_no=1, 
-                 include_incurreds=True, include_covariates=False):
+    def __init__(self, target_col, index_path, set_path, include_incurreds=True, 
+                 include_covariates=False, transform_inputs=False):
         self.target_col = target_col # string referring to name of 
         # target column (i.e. 'claim_size', 'log_m')
         self.index = pd.read_csv(index_path) 
         self.set = pd.read_csv(set_path)
-        self.version_no = version_no # either 1, 2 or 3
         self.include_incurreds = include_incurreds # whether to use case 
         # estimate data or not
         self.include_covariates = include_covariates # whether to include covariate data or not
+        self.transform_inputs = transform_inputs # whether to transform inputs or not
+
+        if self.transform_inputs:
+            self.set['dev_time'] = np.log(self.set['dev_time'] + 1)
+            self.set['paid'] = np.log(self.set['paid'] + 1)
+            self.set['ocl'] = np.log(self.set['ocl'] + 1)
 
     def __len__(self):
         return len(self.index)
@@ -98,100 +103,37 @@ class ClaimsDataset(Dataset):
             legal_rep = self.index['Legal Representation'][index]
             injury_severity = self.index['Injury Severity'][index]
             claimant_age = self.index['Age of Claimant'][index]
-
-        if self.version_no == 1:
             
-            if self.include_incurreds:
-                databox = torch.tensor(df[['dev_time', 'cal_time', 
-                                           'paid', 'ocl']].values)
+        if self.include_incurreds:
+            databox = torch.tensor(df[['dev_time', 'cal_time', 'paid', 'ocl']].values)
                 
-            else:
-               databox = torch.tensor(df[['dev_time','cal_time','paid']].values) 
+        else:
+            databox = torch.tensor(df[['dev_time','cal_time','paid']].values) 
 
-            # Return padded data
-            if self.include_covariates:
-                return (torch.nn.functional.pad(databox.float(), (0,0,0,50-nrows)), 
+        # Return padded data
+        if self.include_covariates:
+            return (torch.nn.functional.pad(databox.float(), (0,0,0,50-nrows)), 
                     target, claim_size, latest_incurred, true_ocl, real_index, 
                     claim_no, pred_time, nrows, legal_rep, injury_severity, claimant_age)
-
-            else:
-                return (torch.nn.functional.pad(databox.float(), (0,0,0,50-nrows)), 
-                    target, claim_size, latest_incurred, true_ocl, real_index, 
-                    claim_no, pred_time, nrows)
-
-        elif self.version_no == 2:
-            if self.include_incurreds:
-                databox = torch.tensor(df[['dev_time', 'cal_time', 'paid', 'ocl', 
-                                       'is_payment', 'is_major', 'is_minor', 
-                                       'multiplier']].values)
-
-            else:
-                databox = torch.tensor(df[['dev_time', 'cal_time', 'paid', 
-                                           'is_payment', 'is_major', 'is_minor', 
-                                           'multiplier']].values)
-
-            # Return padded data
-            if self.include_covariates:
-                return (torch.nn.functional.pad(databox.float(), (0,0,0,50-nrows)), 
-                    target, claim_size, latest_incurred, true_ocl, real_index, 
-                    claim_no, pred_time, nrows, legal_rep, injury_severity, claimant_age)
-            
-            else:
-                return (torch.nn.functional.pad(databox.float(), (0,0,0,50-nrows)), 
-                    target, claim_size, latest_incurred, true_ocl, real_index, 
-                    claim_no, pred_time, nrows)
-
-        elif self.version_no == 3:
-            num_payments = self.index['num_payments'][index]
-            mean_payments = self.index['mean_payments'][index]
-            var_payments = self.index['var_payments'][index]
-            max_payment = self.index['max_payment'][index]
-            num_revisions = self.index['num_revisions'][index]
-            num_upward = self.index['num_upward'][index]
-            total_variation = self.index['total_variation'][index]
-
-            if self.include_incurreds:
-                databox = torch.tensor(df[['dev_time', 'cal_time', 'paid', 'ocl', 
-                                       'is_payment', 'is_major', 'is_minor', 
-                                       'multiplier']].values)
-                
-            else:
-                databox = torch.tensor(df[['dev_time', 'cal_time', 'paid', 
-                                           'is_payment', 'is_major', 'is_minor', 
-                                           'multiplier']].values)
-
-            # Return padded data
-            if self.include_covariates:
-                return (torch.nn.functional.pad(databox.float(), (0,0,0,50-nrows)),  
-                    target, claim_size, latest_incurred, true_ocl, real_index, 
-                    claim_no, pred_time, nrows, num_payments, mean_payments, 
-                    var_payments, max_payment, num_revisions, num_upward, 
-                    total_variation, legal_rep, injury_severity, claimant_age)
-
-            else:
-                return (torch.nn.functional.pad(databox.float(), (0,0,0,50-nrows)),  
-                    target, claim_size, latest_incurred, true_ocl, real_index, 
-                    claim_no, pred_time, nrows, num_payments, mean_payments, 
-                    var_payments, max_payment, num_revisions, num_upward, 
-                    total_variation)
 
         else:
-            raise ValueError('version_no must be 1, 2 or 3')
-        
+            return (torch.nn.functional.pad(databox.float(), (0,0,0,50-nrows)), 
+                    target, claim_size, latest_incurred, true_ocl, real_index, 
+                    claim_no, pred_time, nrows)
+
 class ClaimsRNN(nn.Module):
     """
     Can use vanilla RNN, LSTM and GRU
     Can change this to experiement with different architectures/hyperparameters
     """
 
-    def __init__(self, nHidden, nLayers, nOut, version_no=1, type='RNN', 
+    def __init__(self, nHidden, nLayers, nOut, type='RNN', 
                  nonlinearity='relu', output_layer='linear', dropout=0.0, 
                  normalisation=True, include_incurreds=True, include_covariates=False):
         
         super(ClaimsRNN, self).__init__()
         self.nHidden = nHidden # number of hidden units
         self.nLayers = nLayers # number of layers
-        self.version_no = version_no # either 1, 2 or 3
         self.type = type # either 'RNN', 'LSTM', or 'GRU'
         self.nonlinearity = nonlinearity # either 'relu' or 'tanh'
         # nonLinearity only used in vanilla RNN
@@ -204,11 +146,7 @@ class ClaimsRNN(nn.Module):
 
 
         # nFeatures is the number of features to be input into the RNN layer
-        if self.version_no == 1:
-            self.nFeatures = 3 + self.include_incurreds # 4 features with ocl, 3 without
-        
-        elif self.version_no == 2 or self.version_no == 3:
-            self.nFeatures = 8 # have to include incurred data if using version 2 or 3
+        self.nFeatures = 3 + self.include_incurreds # 4 features with ocl, 3 without
 
         if self.normalisation:
             self.layer_norm1 = nn.LayerNorm(self.nFeatures)
@@ -236,73 +174,33 @@ class ClaimsRNN(nn.Module):
             self.embedding_sev = nn.Embedding(6, self.embedding_dim) # 6 possible injury severities, output 2 dimensions
             self.embedding_age = nn.Embedding(5, self.embedding_dim) # 5 possible ages, output 2 dimensions
 
-        if version_no == 3:
-            if self.include_covariates:
-                # +11 becuase we are adding 7 derived features into the fc layer + 3 covariates + 1 for pred time
-                self.fc1 = nn.Linear(nHidden + 9 + 2 * self.embedding_dim, nHidden // 2)
-
-            else:
-                # +8 becuase we are adding 7 derived features into the fc layer + 1 for pred time
-                self.fc1 = nn.Linear(nHidden + 8, nHidden // 2) 
+            # +6 becuase we are adding 3 covariates (1 direct, 2 after embedding into vectors of size 2 each) into the fc layer + 1 for pred time
+            self.fc1 = nn.Linear(nHidden + 2 + 2 * self.embedding_dim, nHidden // 2)
 
         else:
-            if self.include_covariates:
-                # +6 becuase we are adding 3 covariates (1 direct, 2 after embedding into vectors of size 2 each) into the fc layer + 1 for pred time
-                self.fc1 = nn.Linear(nHidden + 2 + 2 * self.embedding_dim, nHidden // 2)
-
-            else:
-                # +1 for pred time
-                self.fc1 = nn.Linear(nHidden + 1, nHidden // 2)
+            # +1 for pred time
+            self.fc1 = nn.Linear(nHidden + 1, nHidden // 2)
 
         self.fc2 = nn.Linear(nHidden // 2, nOut)
 
-        if (self.version_no == 2 or self.version_no == 3) and not self.include_incurreds:
-            raise ValueError('version_no 2 and 3 must include incurred data')
-
-
     def forward(self, x):
+        # x[0] will be the packed datapoints, x[1:] will be the static covariates
+        out, ht = self.rnn(x[0])
 
-        #if self.normalisation:
-            #x[0] = self.layer_norm1(x[0])
+        if self.type == 'LSTM':
+            ht = ht[0]
 
-        if self.version_no == 3:
-            # x will be a tuple with the first element being the datapoints 
-            # and the rest being the extra features going into the fc layer
-            out, ht = self.rnn(x[0])
+        if self.normalisation:
+            ht = self.layer_norm2(ht)
 
-            if self.type == 'LSTM':
-                ht = ht[0]
+        if self.include_covariates:
+            sev_embed = self.embedding_sev(x[3].long())
+            age_embed = self.embedding_age(x[4].long())
 
-            if self.normalisation:
-                ht = self.layer_norm2(ht)
-
-            # Concatenating the extra features
-            if self.include_covariates:
-                out = torch.cat((ht[-1,:,:], 
-                                 x[1], x[2], x[3], x[4], x[5], x[6], x[7], x[8], x[9], x[10], x[11]), 1)
-
-            else:
-                out = torch.cat((ht[-1,:,:], 
-                             x[1], x[2], x[3], x[4], x[5], x[6], x[7], x[8]), 1)
+            out = torch.cat((ht[-1,:,:], x[1], x[2], sev_embed[:, -1, :], age_embed[:, -1, :]), 1)
 
         else:
-            # x will be the packed datapoints
-            out, ht = self.rnn(x[0])
-
-            if self.type == 'LSTM':
-                ht = ht[0]
-
-            if self.normalisation:
-                ht = self.layer_norm2(ht)
-
-            if self.include_covariates:
-                sev_embed = self.embedding_sev(x[3].long())
-                age_embed = self.embedding_age(x[4].long())
-
-                out = torch.cat((ht[-1,:,:], x[1], x[2], sev_embed[:, -1, :], age_embed[:, -1, :]), 1)
-
-            else:
-                out = torch.cat((ht[-1,:,:], x[1]), 1)
+            out = torch.cat((ht[-1,:,:], x[1]), 1)
 
         out = self.fc1(out)
 
@@ -327,18 +225,14 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
     """
     Args:
         model: the model to train
-        dataset: ClaimsDataset object containing training data
-        epochs: the maximum number of epochs to train for
-        batch_size: the batch size
+        train_data: ClaimsDataset object containing training data
+        hp_comb: dictionary of hyperparameters along with their values
         optimiser: the optimiser to use
-        criterion: loss function
-        version_no: input set (1, 2 or 3)
         verbose: whether to print written outputs and progress to console
         val_data: ClaimsDataset object containing validation data, 
-                  enables early stopping
-        patience: max number of epochs without improvements in validation loss
+            enables early stopping
         cv_loss_list/cv_vsInc_list/cv_uie_list: lists to be passed to keep 
-        track of between-model stats during cross-validation
+            track of between-model stats during cross-validation
     
     """
 
@@ -369,45 +263,18 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
         for batch in trainloader:
 
             # extract batch data
-            if hp_comb['version_no'] == 3:
-                if hp_comb['include_covariates']:
-                    (datapoints, targets, claim_sizes, latest_incurreds, true_ocls,
-                     indexes, claim_nos, pred_times, nrowss, num_paymentss, 
-                     mean_paymentss, var_paymentss, max_payments, num_revisionss, 
-                     num_upwards, total_variations, legal_reps, injury_severities, 
-                     claimant_ages) = batch
-                    
-                    legal_reps = legal_reps.unsqueeze(1).to(device).float()
-                    injury_severities = injury_severities.unsqueeze(1).to(device).float()
-                    claimant_ages = claimant_ages.unsqueeze(1).to(device).float()
+            if hp_comb['include_covariates']:
+                (datapoints, targets, claim_sizes, latest_incurreds, true_ocls,
+                 indexes, claim_nos, pred_times, nrowss, legal_reps, 
+                 injury_severities, claimant_ages) = batch
 
-                else:    
-                    (datapoints, targets, claim_sizes, latest_incurreds, true_ocls,
-                     indexes, claim_nos, pred_times, nrowss, num_paymentss, 
-                     mean_paymentss, var_paymentss, max_payments, num_revisionss, 
-                     num_upwards, total_variations) = batch
-
-                num_paymentss = num_paymentss.unsqueeze(1).to(device).float()
-                mean_paymentss = mean_paymentss.unsqueeze(1).to(device).float()
-                var_paymentss = var_paymentss.unsqueeze(1).to(device).float()
-                max_payments = max_payments.unsqueeze(1).to(device).float()
-                num_revisionss = num_revisionss.unsqueeze(1).to(device).float()
-                num_upwards = num_upwards.unsqueeze(1).to(device).float()
-                total_variations=total_variations.unsqueeze(1).to(device).float()
-
-            else:
-                if hp_comb['include_covariates']:
-                    (datapoints, targets, claim_sizes, latest_incurreds, true_ocls,
-                     indexes, claim_nos, pred_times, nrowss, legal_reps, 
-                     injury_severities, claimant_ages) = batch
-
-                    legal_reps = legal_reps.unsqueeze(1).to(device).float()
-                    injury_severities = injury_severities.unsqueeze(1).to(device).float()
-                    claimant_ages = claimant_ages.unsqueeze(1).to(device).float()
+                legal_reps = legal_reps.unsqueeze(1).to(device).float()
+                injury_severities = injury_severities.unsqueeze(1).to(device).float()
+                claimant_ages = claimant_ages.unsqueeze(1).to(device).float()
                 
-                else:
-                    (datapoints, targets, claim_sizes, latest_incurreds, 
-                     true_ocls, indexes, claim_nos, pred_times, nrowss) = batch
+            else:
+                (datapoints, targets, claim_sizes, latest_incurreds, 
+                 true_ocls, indexes, claim_nos, pred_times, nrowss) = batch
                 
             datapoints = datapoints.to(device).float()
             targets = targets.to(device).float()
@@ -420,26 +287,12 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
                                           enforce_sorted=False, 
                                           batch_first=True)
 
-            if hp_comb['version_no'] == 3:
-                # create a tuple with packed and the extra features
-                if hp_comb['include_covariates']:
-                    packed_extra = (packed, pred_times, num_paymentss, 
-                                    mean_paymentss, var_paymentss, max_payments, 
-                                    num_revisionss, num_upwards, total_variations, 
-                                    legal_reps, injury_severities, claimant_ages)
-
-                else:
-                    packed_extra = (packed, pred_times, num_paymentss, 
-                                    mean_paymentss, var_paymentss, max_payments, 
-                                    num_revisionss, num_upwards, total_variations)
+            if hp_comb['include_covariates']:
+                packed_extra = (packed, pred_times, legal_reps, 
+                                injury_severities, claimant_ages)
 
             else:
-                if hp_comb['include_covariates']:
-                    packed_extra = (packed, pred_times, legal_reps, 
-                                    injury_severities, claimant_ages)
-
-                else:
-                    packed_extra = (packed, pred_times)  
+                packed_extra = (packed, pred_times)  
                 
             raw_preds = model(packed_extra)    
             raw_preds = raw_preds.reshape(raw_preds.shape[0])
@@ -470,7 +323,7 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
             optimiser.zero_grad()
             loss.backward() # Calculate gradients
 
-            # clip gradients (testing this atm)
+            # clip gradients
             max_norm = 1
             clip_grad_norm_(model.parameters(), max_norm)
 
@@ -487,6 +340,7 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
             
             total_observation_sizes += sum(ultimates)
             
+            # uie is not being included in the paper, but useful as a diagnostic during training
             total_uie+=sum(torch.logical_and((preds < latest_incurreds), 
                                              (torch.abs((ultimates-preds)) > 
                                               torch.abs((ultimates-
@@ -582,48 +436,24 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
     total_weighted_vsinc = 0
     total_observation_sizes = 0
 
+    # set model to test mode
+    model.eval()
+
     # Test the model
     with torch.no_grad():
         for batch in test_loader:
-            if hp_comb['version_no'] == 3:
-                if hp_comb['include_covariates']:
-                    (datapoints, targets, claim_sizes, latest_incurreds, true_ocls, 
-                     indexes, claim_nos, pred_times, nrowss, num_paymentss, 
-                     mean_paymentss, var_paymentss, max_payments, num_revisionss, 
-                     num_upwards, total_variations, legal_reps, injury_severities, 
-                     claimant_ages) = batch
+            if hp_comb['include_covariates']:
+                (datapoints, targets, claim_sizes, latest_incurreds, true_ocls, 
+                 indexes, claim_nos, pred_times, nrowss, legal_reps, 
+                 injury_severities, claimant_ages) = batch
 
-                    legal_reps = legal_reps.unsqueeze(1).to(device).float()
-                    injury_severities = injury_severities.unsqueeze(1).to(device).float()
-                    claimant_ages = claimant_ages.unsqueeze(1).to(device).float()
-
-                else:
-                    (datapoints, targets, claim_sizes, latest_incurreds, true_ocls, 
-                     indexes, claim_nos, pred_times, nrowss, num_paymentss, 
-                     mean_paymentss, var_paymentss, max_payments, num_revisionss, 
-                     num_upwards, total_variations) = batch
-
-                num_paymentss = num_paymentss.unsqueeze(1).to(device).float()
-                mean_paymentss = mean_paymentss.unsqueeze(1).to(device).float()
-                var_paymentss = var_paymentss.unsqueeze(1).to(device).float()
-                max_payments = max_payments.unsqueeze(1).to(device).float()
-                num_revisionss = num_revisionss.unsqueeze(1).to(device).float()
-                num_upwards = num_upwards.unsqueeze(1).to(device).float()
-                total_variations = total_variations.unsqueeze(1).to(device).float()
+                legal_reps = legal_reps.unsqueeze(1).to(device).float()
+                injury_severities = injury_severities.unsqueeze(1).to(device).float()
+                claimant_ages = claimant_ages.unsqueeze(1).to(device).float()
 
             else:
-                if hp_comb['include_covariates']:
-                    (datapoints, targets, claim_sizes, latest_incurreds, true_ocls, 
-                     indexes, claim_nos, pred_times, nrowss, legal_reps, 
-                     injury_severities, claimant_ages) = batch
-
-                    legal_reps = legal_reps.unsqueeze(1).to(device).float()
-                    injury_severities = injury_severities.unsqueeze(1).to(device).float()
-                    claimant_ages = claimant_ages.unsqueeze(1).to(device).float()
-
-                else:
-                    (datapoints, targets, claim_sizes, latest_incurreds, true_ocls, 
-                     indexes, claim_nos, pred_times, nrowss) = batch
+                (datapoints, targets, claim_sizes, latest_incurreds, true_ocls, 
+                 indexes, claim_nos, pred_times, nrowss) = batch
 
             datapoints = datapoints.to(device).float()
             targets = targets.to(device).float()
@@ -636,26 +466,12 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
                                           enforce_sorted=False, 
                                           batch_first=True)
 
-            if hp_comb['version_no'] == 3:
-                # create a tuple with packed and the extra features
-                if hp_comb['include_covariates']:
-                    packed_extra = (packed, pred_times, num_paymentss, 
-                                    mean_paymentss, var_paymentss, max_payments, 
-                                    num_revisionss, num_upwards, total_variations, 
-                                    legal_reps, injury_severities, claimant_ages)
+            if hp_comb['include_covariates']:
+                packed_extra = (packed, pred_times, legal_reps, 
+                                injury_severities, claimant_ages)
                 
-                else:
-                    packed_extra = (packed, pred_times, num_paymentss, 
-                                    mean_paymentss, var_paymentss, max_payments, 
-                                    num_revisionss, num_upwards, total_variations)
-
             else:
-                if hp_comb['include_covariates']:
-                    packed_extra = (packed, pred_times, legal_reps, 
-                                    injury_severities, claimant_ages)
-                
-                else:
-                    packed_extra = (packed, pred_times)
+                packed_extra = (packed, pred_times)
 
             raw_preds = model(packed_extra)
             raw_preds = raw_preds.reshape(raw_preds.shape[0])
@@ -722,6 +538,9 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
 
         if isinstance(val_uie_list, list):
             val_uie_list.append(uie)
+
+    # set model back to training mode
+    model.train()
 
 def get_heatmap(actuals, preds, nbins):
     '''Creates a heatmap between the actuals and the predictions on a 
@@ -1252,20 +1071,19 @@ def cross_validate(fp_in, fp_out, hyperparameter_grid, verbose=True):
         train_set = ClaimsDataset(hp_comb['target_col'], 
                                   fp_in + 'train_index.csv', 
                                   fp_in + 'train_set.csv',
-                                  hp_comb['version_no'],
                                   hp_comb['include_incurreds'],
-                                  hp_comb['include_covariates'])
+                                  hp_comb['include_covariates'],
+                                  hp_comb['transform_inputs'])
         
         val_set = ClaimsDataset(hp_comb['target_col'], 
                                 fp_in + 'val_index.csv', 
                                 fp_in + 'val_set.csv', 
-                                hp_comb['version_no'],
                                 hp_comb['include_incurreds'],
-                                hp_comb['include_covariates'])
+                                hp_comb['include_covariates'],
+                                hp_comb['transform_inputs'])
         
         model = ClaimsRNN(hp_comb['nHidden'], hp_comb['nLayers'], 
-                          hp_comb['nOut'], hp_comb['version_no'], 
-                          hp_comb['type'], hp_comb['nonlinearity'], 
+                          hp_comb['nOut'], hp_comb['type'], hp_comb['nonlinearity'], 
                           hp_comb['output_layer'], hp_comb['dropout'], 
                           hp_comb['normalisation'], hp_comb['include_incurreds'], 
                           hp_comb['include_covariates']).to(device)
@@ -1294,7 +1112,8 @@ def cross_validate(fp_in, fp_out, hyperparameter_grid, verbose=True):
         row = pd.DataFrame({'dataset': fp_in.split('/')[-2], 
                             'include_incurreds': hp_comb['include_incurreds'],
                             'include_covariates': hp_comb['include_covariates'],
-                            'version_no': hp_comb['version_no'], 
+                            'transform_inputs': hp_comb['transform_inputs'],
+                            'version_no': 1, 
                             'target_col': hp_comb['target_col'], 
                             'type': hp_comb['type'], 
                             'nLayers': hp_comb['nLayers'], 
@@ -1322,8 +1141,8 @@ def cross_validate(fp_in, fp_out, hyperparameter_grid, verbose=True):
 
     # Results for best model
     model = ClaimsRNN(best_hp_comb['nHidden'], best_hp_comb['nLayers'], 
-                      best_hp_comb['nOut'], best_hp_comb['version_no'], 
-                      best_hp_comb['type'], best_hp_comb['nonlinearity'], 
+                      best_hp_comb['nOut'], best_hp_comb['type'], 
+                      best_hp_comb['nonlinearity'], 
                       best_hp_comb['output_layer'], best_hp_comb['dropout'], 
                       best_hp_comb['normalisation'], 
                       best_hp_comb['include_incurreds'], 
@@ -1331,8 +1150,6 @@ def cross_validate(fp_in, fp_out, hyperparameter_grid, verbose=True):
     
     model.load_state_dict(best_weights)
     analyse_model(model, val_set, best_hp_comb)
-
-    return best_hp_comb
 
 def final_test(fp_in, fp_out, hp_comb, iterations, verbose=True, 
                pretrained=False):
@@ -1355,23 +1172,23 @@ def final_test(fp_in, fp_out, hp_comb, iterations, verbose=True,
     train_set = ClaimsDataset(hp_comb['target_col'], 
                               fp_in + 'train_index.csv', 
                               fp_in + 'train_set.csv', 
-                              hp_comb['version_no'],
                               hp_comb['include_incurreds'],
-                              hp_comb['include_covariates'])
+                              hp_comb['include_covariates'],
+                              hp_comb['transform_inputs'])
 
     val_set = ClaimsDataset(hp_comb['target_col'], 
                             fp_in + 'val_index.csv', 
                             fp_in + 'val_set.csv', 
-                            hp_comb['version_no'],
                             hp_comb['include_incurreds'],
-                            hp_comb['include_covariates'])
+                            hp_comb['include_covariates'],
+                            hp_comb['transform_inputs'])
 
     test_set = ClaimsDataset(hp_comb['target_col'], 
                              fp_in + 'test_index.csv', 
                              fp_in + 'test_set.csv', 
-                             hp_comb['version_no'],
                              hp_comb['include_incurreds'],
-                             hp_comb['include_covariates'])
+                             hp_comb['include_covariates'],
+                             hp_comb['transform_inputs'])
 
     preds_matrix = np.zeros(shape=(iterations, len(test_set.index.index)))
     vsInc_list = np.zeros(shape=iterations)
@@ -1382,8 +1199,7 @@ def final_test(fp_in, fp_out, hp_comb, iterations, verbose=True,
             print(f'Iteration {i}')
 
             model = ClaimsRNN(hp_comb['nHidden'], hp_comb['nLayers'], 
-                            hp_comb['nOut'], hp_comb['version_no'], 
-                            hp_comb['type'], hp_comb['nonlinearity'], 
+                            hp_comb['nOut'], hp_comb['type'], hp_comb['nonlinearity'], 
                             hp_comb['output_layer'], hp_comb['dropout'], 
                             hp_comb['normalisation'], hp_comb['include_incurreds'], 
                             hp_comb['include_covariates']).to(device)
@@ -1449,6 +1265,10 @@ def final_test(fp_in, fp_out, hp_comb, iterations, verbose=True,
     
     val_date_paid = test_paid.sum()['paid']
 
+    print(f'actual ocls: {actuals_val - test_paid["paid"]}')
+    print(f'model ocls (1st run): {preds_val[0] - test_paid["paid"]}')
+    print(f'incurred ocls: {incurreds_val - test_paid["paid"]}')
+
     ocl_preds = aggregate_preds_val - [val_date_paid] * len(aggregate_preds_val)
     ocl_actuals = aggregate_actuals_val - val_date_paid
     ocl_incurreds = aggregate_incurreds_val - val_date_paid
@@ -1459,6 +1279,11 @@ def final_test(fp_in, fp_out, hp_comb, iterations, verbose=True,
                                                            incurreds_val)
                                         for preds in preds_val])
 
+    # PLOTTING RESULTS ACROSS ALL WEIGHT INITIALISATIONS
+
+    # Plotting aggregate claim size by dev quarter and cal quarter (mean across all iterations)
+    aggregate_by_time(test_set.index, actuals, preds_matrix.mean(axis=0), incurreds, 'dev_quarter')
+    aggregate_by_time(test_set.index, actuals, preds_matrix.mean(axis=0), incurreds, 'pred_time')
 
     # Histogram of aggregate claims across all prediction times
     plt.hist(aggregate_preds, weights=(np.zeros_like(aggregate_preds) + 1. / 
@@ -1577,10 +1402,10 @@ def plot_claim(preds_list, data, claim_no):
     plt.step(rnn_pred_times, rnn_preds, label='RNN_preds', where = 'post')
     plt.legend()
 
-def create_grid(version_nos, target_cols, criterions, types, output_layers, 
+def create_grid(target_cols, criterions, types, output_layers, 
                 nOuts, epochss, nHiddens, nLayerss, patiences, batch_sizes, 
                 lrs, nonlinearitys, dropouts, normalisations, 
-                include_incurredss, include_covariatess):
+                include_incurredss, include_covariatess, transform_inputss):
     
     '''
     Inputs: lists of hyperparameter values
@@ -1588,30 +1413,30 @@ def create_grid(version_nos, target_cols, criterions, types, output_layers,
 
     hyperparameter_grid = []
 
-    for params in product(version_nos, target_cols, criterions, types, 
+    for params in product(target_cols, criterions, types, 
                           output_layers, nOuts, epochss, nHiddens, nLayerss, 
                           patiences, batch_sizes, lrs, nonlinearitys, 
                           dropouts, normalisations, include_incurredss, 
-                          include_covariatess):
+                          include_covariatess, transform_inputss):
         
         hyperparameter_grid.append({
-            'version_no': params[0],
-            'target_col': params[1],
-            'criterion': params[2],
-            'type': params[3],
-            'output_layer': params[4],
-            'nOut': params[5],
-            'epochs': params[6],
-            'nHidden': params[7],
-            'nLayers': params[8],
-            'patience': params[9],
-            'batch_size': params[10],
-            'lr': params[11],
-            'nonlinearity': params[12],
-            'dropout': params[13],
-            'normalisation': params[14],
-            'include_incurreds': params[15],
-            'include_covariates': params[16]
+            'target_col': params[0],
+            'criterion': params[1],
+            'type': params[2],
+            'output_layer': params[3],
+            'nOut': params[4],
+            'epochs': params[5],
+            'nHidden': params[6],
+            'nLayers': params[7],
+            'patience': params[8],
+            'batch_size': params[9],
+            'lr': params[10],
+            'nonlinearity': params[11],
+            'dropout': params[12],
+            'normalisation': params[13],
+            'include_incurreds': params[14],
+            'include_covariates': params[15],
+            'transform_inputs': params[16]
         })
 
     return hyperparameter_grid
