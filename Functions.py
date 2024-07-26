@@ -68,11 +68,6 @@ class ClaimsDataset(Dataset):
         self.include_covariates = include_covariates # whether to include covariate data or not
         self.transform_inputs = transform_inputs # whether to transform inputs or not
 
-        if self.transform_inputs:
-            self.set['dev_time'] = np.log(self.set['dev_time'] + 1)
-            self.set['paid'] = np.log(self.set['paid'] + 1)
-            self.set['ocl'] = np.log(self.set['ocl'] + 1)
-
     def __len__(self):
         return len(self.index)
 
@@ -105,10 +100,17 @@ class ClaimsDataset(Dataset):
             claimant_age = self.index['Age of Claimant'][index]
             
         if self.include_incurreds:
-            databox = torch.tensor(df[['dev_time', 'cal_time', 'paid', 'ocl']].values)
+            databox = df[['dev_time', 'cal_time', 'paid', 'ocl']].copy()
                 
         else:
-            databox = torch.tensor(df[['dev_time','cal_time','paid']].values) 
+            databox = df[['dev_time','cal_time','paid']].copy()
+
+        if self.transform_inputs:
+            databox['dev_time'] = np.log(databox['dev_time'] + 1)
+            databox['paid'] = np.log(databox['paid'] + 1)
+            databox['ocl'] = np.log(databox['ocl'] + 1)
+
+        databox = torch.tensor(databox.values)
 
         # Return padded data
         if self.include_covariates:
@@ -1253,7 +1255,9 @@ def final_test(fp_in, fp_out, hp_comb, iterations, verbose=True,
     # finding aggregate incurred at the valuation date (calendar quarter 40)
     preds_val = preds_matrix[:, test_set.index['pred_time'] == val_date]
     actuals_val = actuals[test_set.index['pred_time'] == val_date]
+    #print(f'actuals_val: {actuals_val}')
     incurreds_val = incurreds[test_set.index['pred_time'] == val_date]
+    #print(f'incurreds_val: {incurreds_val}')
 
     aggregate_preds_val = preds_val.sum(axis=1)
     aggregate_actuals_val = actuals_val.sum()
@@ -1261,13 +1265,19 @@ def final_test(fp_in, fp_out, hp_comb, iterations, verbose=True,
 
     # finding total paid and ocl at the valuation date
     test_paid = test_set.set.loc[test_set.set['pred_time'] == val_date, 
-                                 ['claim_no', 'paid']].groupby(['claim_no']).max()
-    
-    val_date_paid = test_paid.sum()['paid']
+                                 ['claim_no', 'paid']].groupby(['claim_no'])['paid'].max()
 
-    print(f'actual ocls: {actuals_val - test_paid["paid"]}')
-    print(f'model ocls (1st run): {preds_val[0] - test_paid["paid"]}')
-    print(f'incurred ocls: {incurreds_val - test_paid["paid"]}')
+    #print(f'test_paid: {test_paid}')
+
+    val_date_paid = test_paid.sum()
+
+    #print(f'actual ocls: {actuals_val - test_paid.values}')
+    print(f'model ocls (1st run): {preds_val[0] - test_paid.values}')
+    #print(f'incurred ocls: {incurreds_val - test_paid.values}')
+
+    print(f'proportion of negative model ocls: {np.mean((preds_val[0] - test_paid.values) < 0)}')
+    print(f'negative model ocls: {(preds_val[0] - test_paid.values)[(preds_val[0] - test_paid.values) < 0]}')
+    print(f'sum of negative model ocls: {np.sum((preds_val[0] - test_paid.values)[(preds_val[0] - test_paid.values) < 0])}')
 
     ocl_preds = aggregate_preds_val - [val_date_paid] * len(aggregate_preds_val)
     ocl_actuals = aggregate_actuals_val - val_date_paid

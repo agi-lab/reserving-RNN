@@ -109,6 +109,14 @@ generate_dataset <- function(seed, with_cov, fp, for_aggregate) {
     test_incurred_dataset_noInf[, c("multiplier", "nrows") := NULL]
   }
   
+  # rounding values to nearest dollar
+  # note that after rounding, it is not guaranteed for cumpaid + OCL = incurred
+  # 0.5 is included to round to the nearest integer instead of always rounding down
+  test_incurred_dataset_noInf[, ':=' (claim_size = as.integer(0.5 + claim_size), 
+                                      incurred = as.integer(0.5 + incurred), 
+                                      OCL = as.integer(0.5 + OCL), 
+                                      cumpaid = as.integer(0.5 + cumpaid))]
+  
   
   write.csv(test_incurred_dataset_noInf, paste0(fp, 'data_noInf_cov_', with_cov, 
                                                 '_seed_', seed, '.csv'))
