@@ -46,6 +46,23 @@ class MeanSquaredLogError(nn.Module):
 
     def forward(self, preds, actuals):
         return np.mean(np.square(np.log(preds) - np.log(actuals)))
+    
+class MSE_with_penalty(nn.Module):
+    '''Testing a new loss function. Works the same as the regular MSE but adds 
+    a penalty for negative OCL predictions. Should only be used with models 
+    that predict claim_size or log_m.'''
+
+    def __init__(self, pen_weight=1):
+        super(MSE_with_penalty, self).__init__()
+        self.pen_weight = pen_weight
+
+    def forward(self, raw_preds, targets, lower_bounds, preds):
+        # lower bounds refers to the cumulative payments to date (ultimate claim size cannot be less than this)
+        # raw_preds are in terms of the model's output (e.g. log_m), preds are transformed to always be in terms of ultimate claim size
+
+        mse = torch.nn.MSELoss()(raw_preds, targets)
+        penalty = self.pen_weight * torch.mean(torch.maximum(torch.zeros_like(preds), lower_bounds - preds))
+        return mse + penalty
 
 ### MODEL CLASSES #############################################################
 
@@ -59,14 +76,12 @@ class ClaimsDataset(Dataset):
 
     def __init__(self, target_col, index_path, set_path, include_incurreds=True, 
                  include_covariates=False, transform_inputs=False):
-        self.target_col = target_col # string referring to name of 
-        # target column (i.e. 'claim_size', 'log_m')
+        self.target_col = target_col # string referring to name of the target column (i.e. 'claim_size', 'log_m', 'true_ocl' or 'log_true_ocl')
         self.index = pd.read_csv(index_path) 
         self.set = pd.read_csv(set_path)
-        self.include_incurreds = include_incurreds # whether to use case 
-        # estimate data or not
-        self.include_covariates = include_covariates # whether to include covariate data or not
-        self.transform_inputs = transform_inputs # whether to transform inputs or not
+        self.include_incurreds = include_incurreds # boolean whether to use case estimate data or not
+        self.include_covariates = include_covariates # boolean whether to include covariate data or not
+        self.transform_inputs = transform_inputs # boolean whether to transform inputs or not
 
     def __len__(self):
         return len(self.index)
@@ -101,14 +116,18 @@ class ClaimsDataset(Dataset):
             
         if self.include_incurreds:
             databox = df[['dev_time', 'cal_time', 'paid', 'ocl']].copy()
+
+            if self.transform_inputs:
+                databox['dev_time'] = np.log(databox['dev_time'] + 1)
+                databox['paid'] = np.log(databox['paid'] + 1)
+                databox['ocl'] = np.log(databox['ocl'] + 1)
                 
         else:
             databox = df[['dev_time','cal_time','paid']].copy()
 
-        if self.transform_inputs:
-            databox['dev_time'] = np.log(databox['dev_time'] + 1)
-            databox['paid'] = np.log(databox['paid'] + 1)
-            databox['ocl'] = np.log(databox['ocl'] + 1)
+            if self.transform_inputs:
+                databox['dev_time'] = np.log(databox['dev_time'] + 1)
+                databox['paid'] = np.log(databox['paid'] + 1)
 
         databox = torch.tensor(databox.values)
 
@@ -321,7 +340,12 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
 
 
             # Loss and gradient descent
-            loss = hp_comb['criterion'](raw_preds, targets)
+            if isinstance(hp_comb['criterion'], MSE_with_penalty):
+                loss = hp_comb['criterion'](raw_preds, targets, claim_sizes - true_ocls, preds)
+
+            else:
+                loss = hp_comb['criterion'](raw_preds, targets)
+            
             optimiser.zero_grad()
             loss.backward() # Calculate gradients
 
@@ -499,7 +523,11 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
 
 
             # Loss and gradient descent
-            loss = hp_comb['criterion'](raw_preds, targets)
+            if isinstance(hp_comb['criterion'], MSE_with_penalty):
+                loss = hp_comb['criterion'](raw_preds, targets, claim_sizes - true_ocls, preds)
+
+            else:
+                loss = hp_comb['criterion'](raw_preds, targets)
 
             # Track statistics
             total_loss += loss.item() * preds.size(0)
@@ -1272,12 +1300,22 @@ def final_test(fp_in, fp_out, hp_comb, iterations, verbose=True,
     val_date_paid = test_paid.sum()
 
     #print(f'actual ocls: {actuals_val - test_paid.values}')
-    print(f'model ocls (1st run): {preds_val[0] - test_paid.values}')
+    model_ocls_run1 = preds_val[0] - test_paid.values
+    print(f'model ocls (1st run): {model_ocls_run1}')
     #print(f'incurred ocls: {incurreds_val - test_paid.values}')
 
-    print(f'proportion of negative model ocls: {np.mean((preds_val[0] - test_paid.values) < 0)}')
-    print(f'negative model ocls: {(preds_val[0] - test_paid.values)[(preds_val[0] - test_paid.values) < 0]}')
-    print(f'sum of negative model ocls: {np.sum((preds_val[0] - test_paid.values)[(preds_val[0] - test_paid.values) < 0])}')
+    print(f'proportion of negative model ocls at valuation date: {np.mean((model_ocls_run1) < 0)}')
+    print(f'negative model ocls at valuation date: {(model_ocls_run1)[(model_ocls_run1) < 0]}')
+    print(f'sum of negative model ocls at valuation date: {np.sum((model_ocls_run1)[(model_ocls_run1) < 0])}')
+
+    print(f'proportion of negative model claim sizes at valuation date: {np.mean(preds_val[0] < 0)}')
+    print(f'negative model claim sizes at valuation date: {preds_val[0][preds_val[0] < 0]}')
+    print(f'sum of negative model claim sizes at valuation date: {np.sum(preds_val[0][preds_val[0] < 0])}')
+
+    #print(model_ocls_run1.size)
+    print(f'actual claim sizes for preds with negative OCL: {actuals_val.loc[model_ocls_run1 < 0]}')
+    print(f'actual OCLs for preds with negative OCL: {actuals_val.loc[model_ocls_run1 < 0] - test_paid.values[model_ocls_run1 < 0]}')
+
 
     ocl_preds = aggregate_preds_val - [val_date_paid] * len(aggregate_preds_val)
     ocl_actuals = aggregate_actuals_val - val_date_paid
