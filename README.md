@@ -34,8 +34,13 @@ incurred chain ladder models, the munich chain ladder (Quarg & Mack, 2004) and t
 
 Contains the main data manipulation, as well as train-test splitting. Prepares the raw data for input into the RNN models.
 
+**3. Dataset folder**
 
-**3. Model Training.ipynb files**
+One benefit of having a simulator is that multiple datasets can be created. The Datasets folder contains the files generated from running the 
+files in steps 1 and 2 when using the seed 20201006. Step 1 results in the outputs in the 'R Outputs' folder, while step 2 generates the files in 
+the 'Python Inputs' folder. You should verify that this is indeed the case before moving to step 4.
+
+**4. Model Training.ipynb files**
 
 These notebooks rely on 'Functions.py'. This script contains all the functions and classes to be called from each of the model 
 training notebooks. "Model Training WithInc.ipynb" should be examined first, then "... NoInc", then "... WithInc OCL".
