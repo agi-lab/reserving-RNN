@@ -38,7 +38,7 @@ Contains the main data manipulation, as well as train-test splitting. Prepares t
 **3. Model Training.ipynb files**
 
 These notebooks rely on 'Functions.py'. This script contains all the functions and classes to be called from each of the model 
-training notebooks.
+training notebooks. "Model Training WithInc.ipynb" should be examined first, then "... NoInc", then "... WithInc OCL".
 
 
 ## Contact
