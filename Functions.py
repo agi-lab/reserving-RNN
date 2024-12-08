@@ -38,31 +38,57 @@ class MeanAbsoluteLogError(nn.Module):
         super(MeanAbsoluteLogError, self).__init__()
 
     def forward(self, preds, actuals):
-        return np.mean(np.abs(np.log(preds) - np.log(actuals)))
+        if torch.is_tensor(preds):
+            return torch.mean(torch.abs(torch.log(preds) - torch.log(actuals)))
+        else:
+            return np.mean(np.abs(np.log(preds) - np.log(actuals)))
     
 class MeanSquaredLogError(nn.Module):
     def __init__(self):
         super(MeanSquaredLogError, self).__init__()
 
     def forward(self, preds, actuals):
-        return np.mean(np.square(np.log(preds) - np.log(actuals)))
+        if torch.is_tensor(preds):
+            return torch.mean(torch.square(torch.log(preds) - torch.log(actuals)))
+        else:
+            return np.mean(np.square(np.log(preds) - np.log(actuals)))
     
-class MSE_with_penalty(nn.Module):
+class MSLE_with_penalty(nn.Module):
     '''Testing a new loss function. Works the same as the regular MSE but adds 
     a penalty for negative OCL predictions. Should only be used with models 
     that predict claim_size or log_m.'''
 
-    def __init__(self, pen_weight=1):
-        super(MSE_with_penalty, self).__init__()
+    def __init__(self, pen_weight=1, pen_type='constant'):
+        super(MSLE_with_penalty, self).__init__()
         self.pen_weight = pen_weight
+        self.pen_type = pen_type # 'constant', 'linear' or 'log'
 
     def forward(self, raw_preds, targets, lower_bounds, preds):
         # lower bounds refers to the cumulative payments to date (ultimate claim size cannot be less than this)
         # raw_preds are in terms of the model's output (e.g. log_m), preds are transformed to always be in terms of ultimate claim size
 
-        mse = torch.nn.MSELoss()(raw_preds, targets)
-        penalty = self.pen_weight * torch.mean(torch.maximum(torch.zeros_like(preds), lower_bounds - preds))
-        return mse + penalty
+        msle = torch.nn.MSELoss()(raw_preds, targets) # raw preds and targets are already in terms of log_m
+
+        if self.pen_type == 'constant':
+            penalty = self.pen_weight * torch.sum(lower_bounds > preds)
+        
+        elif self.pen_type == 'linear':
+            penalty = self.pen_weight * torch.mean(torch.maximum(torch.zeros_like(preds), lower_bounds - preds))
+        
+        elif self.pen_type == 'log':
+            penalty = self.pen_weight * torch.mean(torch.maximum(torch.zeros_like(preds), torch.log(lower_bounds) - torch.log(preds)))
+
+        else:
+            raise ValueError("pen_type must be 'constant', 'linear' or 'log'")
+
+        return msle + penalty
+
+    def __repr__(self):
+        return f"MSLE_with_penalty(pen_weight={self.pen_weight}, pen_type={self.pen_type})"
+
+    def __str__(self):
+        return self.__repr__()
+
 
 ### MODEL CLASSES #############################################################
 
@@ -340,7 +366,7 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
 
 
             # Loss and gradient descent
-            if isinstance(hp_comb['criterion'], MSE_with_penalty):
+            if isinstance(hp_comb['criterion'], MSLE_with_penalty):
                 loss = hp_comb['criterion'](raw_preds, targets, claim_sizes - true_ocls, preds)
 
             else:
@@ -523,7 +549,7 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
 
 
             # Loss and gradient descent
-            if isinstance(hp_comb['criterion'], MSE_with_penalty):
+            if isinstance(hp_comb['criterion'], MSLE_with_penalty):
                 loss = hp_comb['criterion'](raw_preds, targets, claim_sizes - true_ocls, preds)
 
             else:
@@ -1301,20 +1327,30 @@ def final_test(fp_in, fp_out, hp_comb, iterations, verbose=True,
 
     #print(f'actual ocls: {actuals_val - test_paid.values}')
     model_ocls_run1 = preds_val[0] - test_paid.values
-    print(f'model ocls (1st run): {model_ocls_run1}')
+    #print(f'model ocls (1st run): {model_ocls_run1}')
     #print(f'incurred ocls: {incurreds_val - test_paid.values}')
 
     print(f'proportion of negative model ocls at valuation date: {np.mean((model_ocls_run1) < 0)}')
     print(f'negative model ocls at valuation date: {(model_ocls_run1)[(model_ocls_run1) < 0]}')
     print(f'sum of negative model ocls at valuation date: {np.sum((model_ocls_run1)[(model_ocls_run1) < 0])}')
+    print(f'sum of actual ocls from preds with negative ocl: {np.sum((actuals_val - test_paid.values)[(model_ocls_run1) < 0])}')
+    print(f'sum of all actual ocls: {np.sum(actuals_val - test_paid.values)}\n')
 
     print(f'proportion of negative model claim sizes at valuation date: {np.mean(preds_val[0] < 0)}')
     print(f'negative model claim sizes at valuation date: {preds_val[0][preds_val[0] < 0]}')
-    print(f'sum of negative model claim sizes at valuation date: {np.sum(preds_val[0][preds_val[0] < 0])}')
+    print(f'sum of negative model claim sizes at valuation date: {np.sum(preds_val[0][preds_val[0] < 0])}\n')
 
-    #print(model_ocls_run1.size)
-    print(f'actual claim sizes for preds with negative OCL: {actuals_val.loc[model_ocls_run1 < 0]}')
-    print(f'actual OCLs for preds with negative OCL: {actuals_val.loc[model_ocls_run1 < 0] - test_paid.values[model_ocls_run1 < 0]}')
+
+    paids = test_set.set.loc[:,['claim_no', 'pred_time', 'paid']].groupby(['claim_no', 'pred_time'])['paid'].max()
+    model_ocls = preds_matrix[0] - paids
+
+    print(f"proportion of negative model OCLs: {np.mean(model_ocls < 0)}")
+    print(f'sum of negative model OCLs: {np.sum((model_ocls)[(model_ocls) < 0])}')
+    actuals_copy = actuals.copy().reset_index(drop=True)
+    paids_copy = paids.copy().reset_index(drop=True)
+    model_ocls_copy = model_ocls.copy().reset_index(drop=True)
+    print(f'sum of actual OCLs from preds with negative OCL: {np.sum((actuals_copy - paids_copy)[(model_ocls_copy) < 0])}')
+    print(f'sum of all actual OCLs: {np.sum(actuals_copy - paids_copy)}')
 
 
     ocl_preds = aggregate_preds_val - [val_date_paid] * len(aggregate_preds_val)
