@@ -101,13 +101,14 @@ class ClaimsDataset(Dataset):
     """
 
     def __init__(self, target_col, index_path, set_path, include_incurreds=True, 
-                 include_covariates=False, transform_inputs=False):
+                 include_covariates=False, transform_inputs=False, model_type='RNN'):
         self.target_col = target_col # string referring to name of the target column (i.e. 'claim_size', 'log_m', 'true_ocl' or 'log_true_ocl')
         self.index = pd.read_csv(index_path) 
         self.set = pd.read_csv(set_path)
         self.include_incurreds = include_incurreds # boolean whether to use case estimate data or not
         self.include_covariates = include_covariates # boolean whether to include covariate data or not
         self.transform_inputs = transform_inputs # boolean whether to transform inputs or not
+        self.model_type = model_type # string referring to the type of model being used (either 'RNN' (includes LSTM and GRU) or 'FNN')
 
     def __len__(self):
         return len(self.index)
@@ -129,44 +130,171 @@ class ClaimsDataset(Dataset):
         claim_size = self.index['claim_size'][index]
         latest_incurred = self.index['latest_incurred'][index]
         true_ocl = self.index['true_ocl'][index]
+        dev_quarter = self.index['dev_quarter'][index]
 
-        nrows = df[(df['dev_time']!=0)\
-                | (df['cal_time']!=0)\
-                | (df['paid']!=0)\
-                | (df['ocl']!=0)].shape[0]
-        
         if self.include_covariates:
             legal_rep = self.index['Legal Representation'][index]
             injury_severity = self.index['Injury Severity'][index]
             claimant_age = self.index['Age of Claimant'][index]
-            
-        if self.include_incurreds:
-            databox = df[['dev_time', 'cal_time', 'paid', 'ocl']].copy()
 
-            if self.transform_inputs:
-                databox['dev_time'] = np.log(databox['dev_time'] + 1)
-                databox['paid'] = np.log(databox['paid'] + 1)
-                databox['ocl'] = np.log(databox['ocl'] + 1)
+        # Setting up the data to be input into an RNN model
+        if self.model_type == 'RNN':
+            nrows = df[(df['dev_time']!=0)\
+                    | (df['cal_time']!=0)\
+                    | (df['paid']!=0)\
+                    | (df['ocl']!=0)].shape[0]
                 
+            if self.include_incurreds:
+                databox = df[['dev_time', 'cal_time', 'paid', 'ocl']].copy()
+
+                if self.transform_inputs:
+                    databox['dev_time'] = np.log(databox['dev_time'] + 1)
+                    databox['paid'] = np.log(databox['paid'] + 1)
+                    databox['ocl'] = np.log(databox['ocl'] + 1)
+                    
+            else:
+                databox = df[['dev_time','cal_time','paid']].copy()
+
+                if self.transform_inputs:
+                    databox['dev_time'] = np.log(databox['dev_time'] + 1)
+                    databox['paid'] = np.log(databox['paid'] + 1)
+
+            databox = torch.tensor(databox.values)
+
+            # Return padded data
+            if self.include_covariates:
+                return (torch.nn.functional.pad(databox.float(), (0,0,0,50-nrows)), 
+                        target, claim_size, latest_incurred, true_ocl, real_index, 
+                        claim_no, pred_time, nrows, legal_rep, injury_severity, claimant_age)
+
+            else:
+                return (torch.nn.functional.pad(databox.float(), (0,0,0,50-nrows)), 
+                        target, claim_size, latest_incurred, true_ocl, real_index, 
+                        claim_no, pred_time, nrows)
+
+        # Setting up the data to be input into an FNN model
+        elif self.model_type == 'FNN':
+            df_copy = df.copy()
+
+            # finding payment summary info
+            df_copy['payment'] = df_copy['paid'].diff()
+            df_copy['payment'] = df_copy['payment'].fillna(0)
+            payment_rows = df_copy.loc[df_copy['payment'] != 0]
+
+            num_payments = payment_rows.shape[0]
+            mean_payments = payment_rows['payment'].mean() if num_payments > 0 else 0
+            vco_payments = payment_rows['payment'].std() / mean_payments if num_payments > 1 else 0 # need minimum 2 payments for std dev
+            max_payment = payment_rows['payment'].max() if num_payments > 0 else 0
+            
+            # finding case estimate summary info
+            if self.include_incurreds:
+                df_copy['revision'] = df_copy['ocl'].diff() + df_copy['paid'].diff()
+                df_copy['revision'] = df_copy['revision'].fillna(0)
+                revision_rows = df_copy.loc[df_copy['revision'] != 0]
+
+                num_revisions = revision_rows.shape[0]
+                max_revision = revision_rows['revision'].abs().max() if num_revisions > 0 else 0
+                total_revisions = revision_rows['revision'].abs().sum() if num_revisions > 0 else 0
+                prop_upward_revisions = (revision_rows['revision'] > 0).sum() / num_revisions if num_revisions > 0 else 0
+
+            #print(f'df_copy:\n{df_copy}\n')
+            
+            if self.include_incurreds and self.include_covariates:
+
+                '''print(f'pred_time: {pred_time}, \
+                      dev_quarter: {dev_quarter}, \
+                        num_payments: {num_payments}, \
+                        mean_payments: {mean_payments}, \
+                        vco_payments: {vco_payments}, \
+                        max_payment: {max_payment}, \
+                        num_revisions: {num_revisions}, \
+                        max_revision: {max_revision}, \
+                        total_revisions: {total_revisions}, \
+                        prop_upward_revisions: {prop_upward_revisions}, \
+                        legal_rep: {legal_rep}, \
+                        injury_severity: {injury_severity}, \
+                        claimant_age: {claimant_age}, \
+                        target: {target}, \
+                        claim_size: {claim_size}, \
+                        latest_incurred: {latest_incurred}, \
+                        true_ocl: {true_ocl}, \
+                        real_index: {real_index}, \
+                        claim_no: {claim_no}')'''
+
+                return (pred_time, dev_quarter, num_payments, mean_payments, vco_payments, max_payment, 
+                        num_revisions, max_revision, total_revisions, prop_upward_revisions, 
+                        legal_rep, injury_severity, claimant_age,
+                        target, claim_size, latest_incurred, true_ocl, real_index, 
+                        claim_no)
+            
+            elif self.include_incurreds and not self.include_covariates:
+
+                '''print(f'pred_time: {pred_time}, \
+                      dev_quarter: {dev_quarter}, \
+                        num_payments: {num_payments}, \
+                        mean_payments: {mean_payments}, \
+                        vco_payments: {vco_payments}, \
+                        max_payment: {max_payment}, \
+                        num_revisions: {num_revisions}, \
+                        max_revision: {max_revision}, \
+                        total_revisions: {total_revisions}, \
+                        prop_upward_revisions: {prop_upward_revisions}, \
+                        target: {target}, \
+                        claim_size: {claim_size}, \
+                        latest_incurred: {latest_incurred}, \
+                        true_ocl: {true_ocl}, \
+                        real_index: {real_index}, \
+                        claim_no: {claim_no}')'''
+
+                return (pred_time, dev_quarter, num_payments, mean_payments, vco_payments, max_payment, 
+                        num_revisions, max_revision, total_revisions, prop_upward_revisions,
+                        target, claim_size, latest_incurred, true_ocl, real_index, 
+                        claim_no)
+            
+            elif not self.include_incurreds and self.include_covariates:
+
+                '''print(f'pred_time: {pred_time}, \
+                      dev_quarter: {dev_quarter}, \
+                        num_payments: {num_payments}, \
+                        mean_payments: {mean_payments}, \
+                        vco_payments: {vco_payments}, \
+                        max_payment: {max_payment}, \
+                        legal_rep: {legal_rep}, \
+                        injury_severity: {injury_severity}, \
+                        claimant_age: {claimant_age}, \
+                        target: {target}, \
+                        claim_size: {claim_size}, \
+                        latest_incurred: {latest_incurred}, \
+                        true_ocl: {true_ocl}, \
+                        real_index: {real_index}, \
+                        claim_no: {claim_no}')'''
+
+                return (pred_time, dev_quarter, num_payments, mean_payments, vco_payments, max_payment,
+                        legal_rep, injury_severity, claimant_age,
+                        target, claim_size, latest_incurred, true_ocl, real_index, 
+                        claim_no)
+
+            else:
+
+                '''print(f'pred_time: {pred_time}, \
+                      dev_quarter: {dev_quarter}, \
+                        num_payments: {num_payments}, \
+                        mean_payments: {mean_payments}, \
+                        vco_payments: {vco_payments}, \
+                        max_payment: {max_payment}, \
+                        target: {target}, \
+                        claim_size: {claim_size}, \
+                        latest_incurred: {latest_incurred}, \
+                        true_ocl: {true_ocl}, \
+                        real_index: {real_index}, \
+                        claim_no: {claim_no}')'''
+
+                return (pred_time, dev_quarter, num_payments, mean_payments, vco_payments, max_payment,
+                        target, claim_size, latest_incurred, true_ocl, real_index, 
+                        claim_no)
+
         else:
-            databox = df[['dev_time','cal_time','paid']].copy()
-
-            if self.transform_inputs:
-                databox['dev_time'] = np.log(databox['dev_time'] + 1)
-                databox['paid'] = np.log(databox['paid'] + 1)
-
-        databox = torch.tensor(databox.values)
-
-        # Return padded data
-        if self.include_covariates:
-            return (torch.nn.functional.pad(databox.float(), (0,0,0,50-nrows)), 
-                    target, claim_size, latest_incurred, true_ocl, real_index, 
-                    claim_no, pred_time, nrows, legal_rep, injury_severity, claimant_age)
-
-        else:
-            return (torch.nn.functional.pad(databox.float(), (0,0,0,50-nrows)), 
-                    target, claim_size, latest_incurred, true_ocl, real_index, 
-                    claim_no, pred_time, nrows)
+            raise ValueError("model_type must be 'RNN' or 'FNN'")      
 
 class ClaimsRNN(nn.Module):
     """
@@ -190,6 +318,7 @@ class ClaimsRNN(nn.Module):
         self.relu = nn.ReLU() # used for feed-forward hidden layer, should change this so different activation functions can be specified
         self.include_covariates = include_covariates
         self.normalisation = normalisation # boolean for whether to use batch and layer normalisation
+        self.nConcatUnits = 64 # hard coding 64 units for now, this will be the number of units of both RNN and static inputs before concatenating
 
 
         # nFeatures is the number of features to be input into the RNN layer
@@ -198,7 +327,9 @@ class ClaimsRNN(nn.Module):
         if self.normalisation:
             self.layer_norm1 = nn.LayerNorm(self.nFeatures)
             self.layer_norm2 = nn.LayerNorm(nHidden)
-            self.batch_norm1 = nn.BatchNorm1d(nHidden // 2)
+            self.batch_norm1 = nn.BatchNorm1d(self.nConcatUnits)
+            self.batch_norm2 = nn.BatchNorm1d(self.nConcatUnits)
+            self.batch_norm3 = nn.BatchNorm1d(self.nConcatUnits)
 
         if type == 'RNN':
             self.rnn = nn.RNN(self.nFeatures, nHidden, nLayers, 
@@ -216,19 +347,26 @@ class ClaimsRNN(nn.Module):
         else:
             raise ValueError("type must be 'RNN', 'LSTM' or 'GRU'")
 
+        # RNN output is reduced in size
+        self.fc1 = nn.Linear(nHidden, self.nConcatUnits) # hard coding 64 units for now
+
+
         if self.include_covariates:
             self.embedding_dim = 2
             self.embedding_sev = nn.Embedding(6, self.embedding_dim) # 6 possible injury severities, output 2 dimensions
             self.embedding_age = nn.Embedding(5, self.embedding_dim) # 5 possible ages, output 2 dimensions
 
-            # +6 becuase we are adding 3 covariates (1 direct, 2 after embedding into vectors of size 2 each) into the fc layer + 1 for pred time
-            self.fc1 = nn.Linear(nHidden + 2 + 2 * self.embedding_dim, nHidden // 2)
+            # static inputs are increased in size
+            self.fc2 = nn.Linear(2 + 2 * self.embedding_dim, self.nConcatUnits)
+
+            # combining RNN and static outputs
+            self.fc3 = nn.Linear(2 * self.nConcatUnits, self.nConcatUnits)
 
         else:
-            # +1 for pred time
-            self.fc1 = nn.Linear(nHidden + 1, nHidden // 2)
+            # otherwise RNN outputs + 1 for pred time
+            self.fc3 = nn.Linear(self.nConcatUnits + 1, self.nConcatUnits)
 
-        self.fc2 = nn.Linear(nHidden // 2, nOut)
+        self.fc4 = nn.Linear(self.nConcatUnits, nOut)
 
     def forward(self, x):
         # x[0] will be the packed datapoints, x[1:] will be the static covariates
@@ -240,28 +378,95 @@ class ClaimsRNN(nn.Module):
         if self.normalisation:
             ht = self.layer_norm2(ht)
 
-        if self.include_covariates:
-            sev_embed = self.embedding_sev(x[3].long())
-            age_embed = self.embedding_age(x[4].long())
-
-            out = torch.cat((ht[-1,:,:], x[1], x[2], sev_embed[:, -1, :], age_embed[:, -1, :]), 1)
-
-        else:
-            out = torch.cat((ht[-1,:,:], x[1]), 1)
-
-        out = self.fc1(out)
+        out = self.fc1(ht[-1,:,:])
 
         if self.normalisation:
             out = self.batch_norm1(out)
 
-        # non-linear activation for feed-forward hidden layer
         out = self.relu(out)
 
-        out = self.fc2(out)
+
+        if self.include_covariates:
+            sev_embed = self.embedding_sev(x[3].long())
+            age_embed = self.embedding_age(x[4].long())
+
+            static_out = torch.cat((x[1], x[2], sev_embed[:, -1, :], age_embed[:, -1, :]), 1)
+            static_out = self.fc2(static_out)
+
+            if self.normalisation:
+                static_out = self.batch_norm2(static_out)
+            
+            static_out = self.relu(static_out)
+
+            out = torch.cat((out, static_out), 1)
+            
+
+        else:
+            out = torch.cat((out, x[1]), 1)
+
+        out = self.fc3(out)
+
+        if self.normalisation:
+            out = self.batch_norm3(out)
+
+        out = self.relu(out)
+
+        out = self.fc4(out)
 
         if self.output_layer == 'exponential':
             out = torch.exp(out)
 
+        return out
+    
+
+class ClaimsFNN(nn.Module):
+    """
+    Feed-Forward Neural Network to be used as a benchmark model
+    """
+
+    def __init__(self, nLayers=2, nHidden=50, dropout = 0.2, 
+                 final_activation='exp', include_incurreds=True, 
+                 include_covariates=True):
+        """
+        Initialises the Feedforward Neural Network.
+
+        Args:
+            p: Number of features in the input dataset.
+            nLayers: Number of hidden layers in the network.
+            nHidden: Number of neurons in each hidden layer.
+            dropout: Dropout rate for regularization.
+            final_activation: Output layer activation function. 'exp' for exponential, 'linear' for linear.
+        """
+        super(ClaimsFNN, self).__init__()
+
+        # 2 for times, 4 for payments, 4 for revisions, 3 for covariates
+        self.num_features = 6 + 4 * include_incurreds + 3 * include_covariates
+        self.final_activation = final_activation
+
+        layers = [nn.Linear(self.num_features, nHidden), nn.LeakyReLU(), nn.Dropout(dropout)]
+        for _ in range(nLayers - 1):
+            layers.append(nn.Linear(nHidden, nHidden))
+            layers.append(nn.LeakyReLU())
+            layers.append(nn.Dropout(dropout))  # Add dropout after each LeakyReLU activation
+
+        layers.append(nn.Linear(nHidden, 1))
+        self.nn_output_layer = nn.Sequential(*layers)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Calculate the predicted outputs for the distributions.
+        Args:
+            x: the input features (shape: (n, p))
+        Returns:
+            the predicted outputs (shape: (n,))
+        """
+        if self.final_activation == 'exp':
+            out = torch.exp(self.nn_output_layer(x).squeeze(-1)) # * x[:, -1].squeeze(-1)
+        elif self.final_activation == 'linear':
+            out = self.nn_output_layer(x).squeeze(-1)
+        else:
+            raise ValueError(f"Unsupported final activation function: {self.final_activation}")
+        assert out.shape == torch.Size([x.shape[0]])
         return out
 
 ### TRAINING/TESTING FUNCTIONS ################################################
@@ -309,38 +514,146 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
 
         for batch in trainloader:
 
-            # extract batch data
-            if hp_comb['include_covariates']:
-                (datapoints, targets, claim_sizes, latest_incurreds, true_ocls,
-                 indexes, claim_nos, pred_times, nrowss, legal_reps, 
-                 injury_severities, claimant_ages) = batch
+            if hp_comb['model_type'] == 'RNN':
+                # extract batch data
+                if hp_comb['include_covariates']:
+                    (datapoints, targets, claim_sizes, latest_incurreds, true_ocls,
+                    indexes, claim_nos, pred_times, nrowss, legal_reps, 
+                    injury_severities, claimant_ages) = batch
 
-                legal_reps = legal_reps.unsqueeze(1).to(device).float()
-                injury_severities = injury_severities.unsqueeze(1).to(device).float()
-                claimant_ages = claimant_ages.unsqueeze(1).to(device).float()
-                
+                    legal_reps = legal_reps.unsqueeze(1).to(device).float()
+                    injury_severities = injury_severities.unsqueeze(1).to(device).float()
+                    claimant_ages = claimant_ages.unsqueeze(1).to(device).float()
+                    
+                else:
+                    (datapoints, targets, claim_sizes, latest_incurreds, 
+                    true_ocls, indexes, claim_nos, pred_times, nrowss) = batch
+                    
+                datapoints = datapoints.to(device).float()
+                targets = targets.to(device).float()
+                claim_sizes = claim_sizes.to(device).float()
+                latest_incurreds = latest_incurreds.to(device).float()
+                true_ocls = true_ocls.to(device).float()
+                pred_times = pred_times.unsqueeze(1).to(device).float()
+
+                packed = pack_padded_sequence(datapoints, nrowss, 
+                                            enforce_sorted=False, 
+                                            batch_first=True)
+
+                if hp_comb['include_covariates']:
+                    packed_extra = (packed, pred_times, legal_reps, 
+                                    injury_severities, claimant_ages)
+
+                else:
+                    packed_extra = (packed, pred_times)  
+
+            elif hp_comb['model_type'] == 'FNN':
+                if hp_comb['include_incurreds'] and hp_comb['include_covariates']:
+                    (pred_times, dev_quarters, num_payments, mean_payments, 
+                    vco_payments, max_payment, num_revisions, max_revision, 
+                    total_revisions, prop_upward_revisions, legal_reps, 
+                    injury_severities, claimant_ages, targets, claim_sizes, 
+                    latest_incurreds, true_ocls, indexes, claim_nos) = batch
+
+                    pred_times = pred_times.to(device).float()
+                    dev_quarters = dev_quarters.to(device).float()
+                    num_payments = num_payments.to(device).float()
+                    mean_payments = mean_payments.to(device).float()
+                    vco_payments = vco_payments.to(device).float()
+                    max_payment = max_payment.to(device).float()
+                    num_revisions = num_revisions.to(device).float()
+                    max_revision = max_revision.to(device).float()
+                    total_revisions = total_revisions.to(device).float()
+                    prop_upward_revisions = prop_upward_revisions.to(device).float()
+                    legal_reps = legal_reps.to(device).float()
+                    injury_severities = injury_severities.to(device).float()
+                    claimant_ages = claimant_ages.to(device).float()
+                    targets = targets.to(device).float()
+                    claim_sizes = claim_sizes.to(device).float()
+                    latest_incurreds = latest_incurreds.to(device).float()
+                    true_ocls = true_ocls.to(device).float()
+
+                    #print(f'type of pred_times: {type(pred_times)}')
+                    #print(f'dimension of pred_times: {pred_times.shape}')
+
+                    packed_extra = torch.stack((pred_times, dev_quarters, num_payments, mean_payments,
+                                    vco_payments, max_payment, num_revisions, max_revision,
+                                    total_revisions, prop_upward_revisions, legal_reps,
+                                    injury_severities, claimant_ages), dim=1).to(device)
+
+                    #print(f'dimension of packed_extra: {packed_extra.shape}')
+
+                elif hp_comb['include_incurreds'] and not hp_comb['include_covariates']:
+                    (pred_times, dev_quarters, num_payments, mean_payments, 
+                    vco_payments, max_payment, num_revisions, max_revision, 
+                    total_revisions, prop_upward_revisions, targets, claim_sizes, 
+                    latest_incurreds, true_ocls, indexes, claim_nos) = batch
+
+                    pred_times = pred_times.unsqueeze(1).to(device).float()
+                    dev_quarters = dev_quarters.unsqueeze(1).to(device).float()
+                    num_payments = num_payments.unsqueeze(1).to(device).float()
+                    mean_payments = mean_payments.unsqueeze(1).to(device).float()
+                    vco_payments = vco_payments.unsqueeze(1).to(device).float()
+                    max_payment = max_payment.unsqueeze(1).to(device).float()
+                    num_revisions = num_revisions.unsqueeze(1).to(device).float()
+                    max_revision = max_revision.unsqueeze(1).to(device).float()
+                    total_revisions = total_revisions.unsqueeze(1).to(device).float()
+                    prop_upward_revisions = prop_upward_revisions.unsqueeze(1).to(device).float()
+                    targets = targets.to(device).float()
+                    claim_sizes = claim_sizes.to(device).float()
+                    latest_incurreds = latest_incurreds.to(device).float()
+                    true_ocls = true_ocls.to(device).float()
+
+                    packed_extra = torch.Tensor([pred_times, dev_quarters, num_payments, mean_payments,
+                                    vco_payments, max_payment, num_revisions, max_revision,
+                                    total_revisions, prop_upward_revisions])
+
+                elif not hp_comb['include_incurreds'] and hp_comb['include_covariates']:
+                    (pred_times, dev_quarters, num_payments, mean_payments, 
+                    vco_payments, max_payment, legal_reps, injury_severities, 
+                    claimant_ages, targets, claim_sizes, latest_incurreds, 
+                    true_ocls, indexes, claim_nos) = batch
+
+                    pred_times = pred_times.unsqueeze(1).to(device).float()
+                    dev_quarters = dev_quarters.unsqueeze(1).to(device).float()
+                    num_payments = num_payments.unsqueeze(1).to(device).float()
+                    mean_payments = mean_payments.unsqueeze(1).to(device).float()
+                    vco_payments = vco_payments.unsqueeze(1).to(device).float()
+                    max_payment = max_payment.unsqueeze(1).to(device).float()
+                    legal_reps = legal_reps.unsqueeze(1).to(device).float()
+                    injury_severities = injury_severities.unsqueeze(1).to(device).float()
+                    claimant_ages = claimant_ages.unsqueeze(1).to(device).float()
+                    targets = targets.to(device).float()
+                    claim_sizes = claim_sizes.to(device).float()
+                    latest_incurreds = latest_incurreds.to(device).float()
+                    true_ocls = true_ocls.to(device).float()
+
+                    packed_extra = torch.Tensor([pred_times, dev_quarters, num_payments, mean_payments,
+                                    vco_payments, max_payment, legal_reps, injury_severities, 
+                                    claimant_ages])
+
+                else:
+                    (pred_times, dev_quarters, num_payments, mean_payments, 
+                    vco_payments, max_payment, targets, claim_sizes, latest_incurreds, 
+                    true_ocls, indexes, claim_nos) = batch
+
+                    pred_times = pred_times.unsqueeze(1).to(device).float()
+                    dev_quarters = dev_quarters.unsqueeze(1).to(device).float()
+                    num_payments = num_payments.unsqueeze(1).to(device).float()
+                    mean_payments = mean_payments.unsqueeze(1).to(device).float()
+                    vco_payments = vco_payments.unsqueeze(1).to(device).float()
+                    max_payment = max_payment.unsqueeze(1).to(device).float()
+                    targets = targets.to(device).float()
+                    claim_sizes = claim_sizes.to(device).float()
+                    latest_incurreds = latest_incurreds.to(device).float()
+                    true_ocls = true_ocls.to(device).float()
+
+                    packed_extra = torch.Tensor([pred_times, dev_quarters, num_payments, mean_payments,
+                                    vco_payments, max_payment])
+
             else:
-                (datapoints, targets, claim_sizes, latest_incurreds, 
-                 true_ocls, indexes, claim_nos, pred_times, nrowss) = batch
-                
-            datapoints = datapoints.to(device).float()
-            targets = targets.to(device).float()
-            claim_sizes = claim_sizes.to(device).float()
-            latest_incurreds = latest_incurreds.to(device).float()
-            true_ocls = true_ocls.to(device).float()
-            pred_times = pred_times.unsqueeze(1).to(device).float()
+                raise ValueError("model_type must be 'RNN' or 'FNN'")
 
-            packed = pack_padded_sequence(datapoints, nrowss, 
-                                          enforce_sorted=False, 
-                                          batch_first=True)
-
-            if hp_comb['include_covariates']:
-                packed_extra = (packed, pred_times, legal_reps, 
-                                injury_severities, claimant_ages)
-
-            else:
-                packed_extra = (packed, pred_times)  
-                
             raw_preds = model(packed_extra)    
             raw_preds = raw_preds.reshape(raw_preds.shape[0])
 
@@ -494,36 +807,137 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
     # Test the model
     with torch.no_grad():
         for batch in test_loader:
-            if hp_comb['include_covariates']:
-                (datapoints, targets, claim_sizes, latest_incurreds, true_ocls, 
-                 indexes, claim_nos, pred_times, nrowss, legal_reps, 
-                 injury_severities, claimant_ages) = batch
 
-                legal_reps = legal_reps.unsqueeze(1).to(device).float()
-                injury_severities = injury_severities.unsqueeze(1).to(device).float()
-                claimant_ages = claimant_ages.unsqueeze(1).to(device).float()
+            if hp_comb['model_type'] == 'RNN':
 
-            else:
-                (datapoints, targets, claim_sizes, latest_incurreds, true_ocls, 
-                 indexes, claim_nos, pred_times, nrowss) = batch
+                if hp_comb['include_covariates']:
+                    (datapoints, targets, claim_sizes, latest_incurreds, true_ocls, 
+                    indexes, claim_nos, pred_times, nrowss, legal_reps, 
+                    injury_severities, claimant_ages) = batch
 
-            datapoints = datapoints.to(device).float()
-            targets = targets.to(device).float()
-            claim_sizes = claim_sizes.to(device).float()
-            latest_incurreds = latest_incurreds.to(device).float()
-            true_ocls = true_ocls.to(device).float()
-            pred_times = pred_times.unsqueeze(1).to(device).float()
+                    legal_reps = legal_reps.unsqueeze(1).to(device).float()
+                    injury_severities = injury_severities.unsqueeze(1).to(device).float()
+                    claimant_ages = claimant_ages.unsqueeze(1).to(device).float()
 
-            packed = pack_padded_sequence(datapoints, nrowss, 
-                                          enforce_sorted=False, 
-                                          batch_first=True)
+                else:
+                    (datapoints, targets, claim_sizes, latest_incurreds, true_ocls, 
+                    indexes, claim_nos, pred_times, nrowss) = batch
 
-            if hp_comb['include_covariates']:
-                packed_extra = (packed, pred_times, legal_reps, 
-                                injury_severities, claimant_ages)
+                datapoints = datapoints.to(device).float()
+                targets = targets.to(device).float()
+                claim_sizes = claim_sizes.to(device).float()
+                latest_incurreds = latest_incurreds.to(device).float()
+                true_ocls = true_ocls.to(device).float()
+                pred_times = pred_times.unsqueeze(1).to(device).float()
+
+                packed = pack_padded_sequence(datapoints, nrowss, 
+                                            enforce_sorted=False, 
+                                            batch_first=True)
+
+                if hp_comb['include_covariates']:
+                    packed_extra = (packed, pred_times, legal_reps, 
+                                    injury_severities, claimant_ages)
+                    
+                else:
+                    packed_extra = (packed, pred_times)
+
+            elif hp_comb['model_type'] == 'FNN':
+                if hp_comb['include_incurreds'] and hp_comb['include_covariates']:
+                    (pred_times, dev_quarters, num_payments, mean_payments, 
+                    vco_payments, max_payment, num_revisions, max_revision, 
+                    total_revisions, prop_upward_revisions, legal_reps, 
+                    injury_severities, claimant_ages, targets, claim_sizes, 
+                    latest_incurreds, true_ocls, indexes, claim_nos) = batch
+
+                    pred_times = pred_times.to(device).float()
+                    dev_quarters = dev_quarters.to(device).float()
+                    num_payments = num_payments.to(device).float()
+                    mean_payments = mean_payments.to(device).float()
+                    vco_payments = vco_payments.to(device).float()
+                    max_payment = max_payment.to(device).float()
+                    num_revisions = num_revisions.to(device).float()
+                    max_revision = max_revision.to(device).float()
+                    total_revisions = total_revisions.to(device).float()
+                    prop_upward_revisions = prop_upward_revisions.to(device).float()
+                    legal_reps = legal_reps.to(device).float()
+                    injury_severities = injury_severities.to(device).float()
+                    claimant_ages = claimant_ages.to(device).float()
+                    targets = targets.to(device).float()
+                    claim_sizes = claim_sizes.to(device).float()
+                    latest_incurreds = latest_incurreds.to(device).float()
+                    true_ocls = true_ocls.to(device).float()
+
+                    packed_extra = torch.stack((pred_times, dev_quarters, num_payments, mean_payments,
+                                    vco_payments, max_payment, num_revisions, max_revision,
+                                    total_revisions, prop_upward_revisions, legal_reps,
+                                    injury_severities, claimant_ages), dim=1).to(device)
+
+                elif hp_comb['include_incurreds'] and not hp_comb['include_covariates']:
+                    (pred_times, dev_quarters, num_payments, mean_payments, 
+                    vco_payments, max_payment, num_revisions, max_revision, 
+                    total_revisions, prop_upward_revisions, targets, claim_sizes,
+                    latest_incurreds, true_ocls, indexes, claim_nos) = batch
+
+                    pred_times = pred_times.unsqueeze(1).to(device).float()
+                    dev_quarters = dev_quarters.unsqueeze(1).to(device).float()
+                    num_payments = num_payments.unsqueeze(1).to(device).float()
+                    mean_payments = mean_payments.unsqueeze(1).to(device).float()
+                    vco_payments = vco_payments.unsqueeze(1).to(device).float()
+                    max_payment = max_payment.unsqueeze(1).to(device).float()
+                    num_revisions = num_revisions.unsqueeze(1).to(device).float()
+                    max_revision = max_revision.unsqueeze(1).to(device).float()
+                    total_revisions = total_revisions.unsqueeze(1).to(device).float()
+                    prop_upward_revisions = prop_upward_revisions.unsqueeze(1).to(device).float()
+                    targets = targets.to(device).float()
+                    claim_sizes = claim_sizes.to(device).float()
+                    latest_incurreds = latest_incurreds.to(device).float()
+                    true_ocls = true_ocls.to(device).float()
+
+                elif not hp_comb['include_incurreds'] and hp_comb['include_covariates']:
+                    (pred_times, dev_quarters, num_payments, mean_payments, 
+                    vco_payments, max_payment, legal_reps, injury_severities, 
+                    claimant_ages, targets, claim_sizes, latest_incurreds, 
+                    true_ocls, indexes, claim_nos) = batch
+
+                    pred_times = pred_times.unsqueeze(1).to(device).float()
+                    dev_quarters = dev_quarters.unsqueeze(1).to(device).float()
+                    num_payments = num_payments.unsqueeze(1).to(device).float()
+                    mean_payments = mean_payments.unsqueeze(1).to(device).float()
+                    vco_payments = vco_payments.unsqueeze(1).to(device).float()
+                    max_payment = max_payment.unsqueeze(1).to(device).float()
+                    legal_reps = legal_reps.unsqueeze(1).to(device).float()
+                    injury_severities = injury_severities.unsqueeze(1).to(device).float()
+                    claimant_ages = claimant_ages.unsqueeze(1).to(device).float()
+                    targets = targets.to(device).float()
+                    claim_sizes = claim_sizes.to(device).float()
+                    latest_incurreds = latest_incurreds.to(device).float()
+                    true_ocls = true_ocls.to(device).float()
+
+                    packed_extra = (pred_times, dev_quarters, num_payments, mean_payments,
+                                    vco_payments, max_payment, legal_reps, injury_severities, 
+                                    claimant_ages)
                 
+                else:
+                    (pred_times, dev_quarters, num_payments, mean_payments, 
+                    vco_payments, max_payment, targets, claim_sizes, latest_incurreds, 
+                    true_ocls, indexes, claim_nos) = batch
+
+                    pred_times = pred_times.unsqueeze(1).to(device).float()
+                    dev_quarters = dev_quarters.unsqueeze(1).to(device).float()
+                    num_payments = num_payments.unsqueeze(1).to(device).float()
+                    mean_payments = mean_payments.unsqueeze(1).to(device).float()
+                    vco_payments = vco_payments.unsqueeze(1).to(device).float()
+                    max_payment = max_payment.unsqueeze(1).to(device).float()
+                    targets = targets.to(device).float()
+                    claim_sizes = claim_sizes.to(device).float()
+                    latest_incurreds = latest_incurreds.to(device).float()
+                    true_ocls = true_ocls.to(device).float()
+
+                    packed_extra = (pred_times, dev_quarters, num_payments, mean_payments,
+                                    vco_payments, max_payment)
+
             else:
-                packed_extra = (packed, pred_times)
+                raise ValueError("model_type must be 'RNN' or 'FNN'")
 
             raw_preds = model(packed_extra)
             raw_preds = raw_preds.reshape(raw_preds.shape[0])
@@ -1099,6 +1513,8 @@ def cross_validate(fp_in, fp_out, hyperparameter_grid, verbose=True):
     - Each dictionary contains the hyperparameter as a key and the value as 
       the value to try. 
     - There will only be 1 value for every key.
+    verbose: whether to print written outputs and progress to console
+    model_type: the type of model to train. Either "RNN" (includes LSTM and GRU) or "FNN"
 
     NOTE: do not change loss function within 1 run of this function becuase 
           the loss numbers will be on a different scale.
@@ -1129,20 +1545,32 @@ def cross_validate(fp_in, fp_out, hyperparameter_grid, verbose=True):
                                   fp_in + 'train_set.csv',
                                   hp_comb['include_incurreds'],
                                   hp_comb['include_covariates'],
-                                  hp_comb['transform_inputs'])
+                                  hp_comb['transform_inputs'],
+                                  hp_comb['model_type'])
         
         val_set = ClaimsDataset(hp_comb['target_col'], 
                                 fp_in + 'val_index.csv', 
                                 fp_in + 'val_set.csv', 
                                 hp_comb['include_incurreds'],
                                 hp_comb['include_covariates'],
-                                hp_comb['transform_inputs'])
+                                hp_comb['transform_inputs'],
+                                hp_comb['model_type'])
         
-        model = ClaimsRNN(hp_comb['nHidden'], hp_comb['nLayers'], 
+        if hp_comb['model_type'] == "RNN":
+            model = ClaimsRNN(hp_comb['nHidden'], hp_comb['nLayers'], 
                           hp_comb['nOut'], hp_comb['type'], hp_comb['nonlinearity'], 
                           hp_comb['output_layer'], hp_comb['dropout'], 
                           hp_comb['normalisation'], hp_comb['include_incurreds'], 
                           hp_comb['include_covariates']).to(device)
+            
+        elif hp_comb['model_type'] == "FNN":
+            model = ClaimsFNN(hp_comb['nLayers'], hp_comb['nHidden'],  
+                              hp_comb['dropout'], hp_comb['output_layer'],
+                              hp_comb['include_incurreds'], 
+                              hp_comb['include_covariates']).to(device)
+            
+        else:
+            ValueError('Invalid model type. Must be "RNN" or "FNN"')
         
         optimiser = optim.Adam(model.parameters(), lr=hp_comb['lr'])
 
@@ -1166,6 +1594,7 @@ def cross_validate(fp_in, fp_out, hyperparameter_grid, verbose=True):
         
         # appending results to dataframe
         row = pd.DataFrame({'dataset': fp_in.split('/')[-2], 
+                            'model_type': hp_comb['model_type'],
                             'include_incurreds': hp_comb['include_incurreds'],
                             'include_covariates': hp_comb['include_covariates'],
                             'transform_inputs': hp_comb['transform_inputs'],
@@ -1196,13 +1625,23 @@ def cross_validate(fp_in, fp_out, hyperparameter_grid, verbose=True):
         print(f'Best validation UIE: {best_val_uie:.2f}%')
 
     # Results for best model
-    model = ClaimsRNN(best_hp_comb['nHidden'], best_hp_comb['nLayers'], 
-                      best_hp_comb['nOut'], best_hp_comb['type'], 
-                      best_hp_comb['nonlinearity'], 
-                      best_hp_comb['output_layer'], best_hp_comb['dropout'], 
-                      best_hp_comb['normalisation'], 
-                      best_hp_comb['include_incurreds'], 
-                      best_hp_comb['include_covariates']).to(device)
+    if hp_comb['model_type'] == "RNN":
+        model = ClaimsRNN(best_hp_comb['nHidden'], best_hp_comb['nLayers'], 
+                          best_hp_comb['nOut'], best_hp_comb['type'], 
+                          best_hp_comb['nonlinearity'], 
+                          best_hp_comb['output_layer'], best_hp_comb['dropout'], 
+                          best_hp_comb['normalisation'], 
+                          best_hp_comb['include_incurreds'], 
+                          best_hp_comb['include_covariates']).to(device)
+
+    elif hp_comb['model_type'] == "FNN":
+        model = ClaimsFNN(best_hp_comb['nLayers'], best_hp_comb['nHidden'], 
+                          best_hp_comb['dropout'], best_hp_comb['output_layer'],
+                          best_hp_comb['include_incurreds'], 
+                          best_hp_comb['include_covariates']).to(device)
+
+    else:
+        ValueError('Invalid model type. Must be "RNN" or "FNN"')
     
     model.load_state_dict(best_weights)
     analyse_model(model, val_set, best_hp_comb)
@@ -1230,21 +1669,24 @@ def final_test(fp_in, fp_out, hp_comb, iterations, verbose=True,
                               fp_in + 'train_set.csv', 
                               hp_comb['include_incurreds'],
                               hp_comb['include_covariates'],
-                              hp_comb['transform_inputs'])
+                              hp_comb['transform_inputs'],
+                              hp_comb['model_type'])
 
     val_set = ClaimsDataset(hp_comb['target_col'], 
                             fp_in + 'val_index.csv', 
                             fp_in + 'val_set.csv', 
                             hp_comb['include_incurreds'],
                             hp_comb['include_covariates'],
-                            hp_comb['transform_inputs'])
+                            hp_comb['transform_inputs'],
+                            hp_comb['model_type'])
 
     test_set = ClaimsDataset(hp_comb['target_col'], 
                              fp_in + 'test_index.csv', 
                              fp_in + 'test_set.csv', 
                              hp_comb['include_incurreds'],
                              hp_comb['include_covariates'],
-                             hp_comb['transform_inputs'])
+                             hp_comb['transform_inputs'],
+                             hp_comb['model_type'])
 
     preds_matrix = np.zeros(shape=(iterations, len(test_set.index.index)))
     vsInc_list = np.zeros(shape=iterations)
@@ -1254,12 +1696,22 @@ def final_test(fp_in, fp_out, hp_comb, iterations, verbose=True,
         for i in range(iterations):
             print(f'Iteration {i}')
 
-            model = ClaimsRNN(hp_comb['nHidden'], hp_comb['nLayers'], 
-                            hp_comb['nOut'], hp_comb['type'], hp_comb['nonlinearity'], 
-                            hp_comb['output_layer'], hp_comb['dropout'], 
-                            hp_comb['normalisation'], hp_comb['include_incurreds'], 
-                            hp_comb['include_covariates']).to(device)
+            if hp_comb['model_type'] == "RNN":
+                model = ClaimsRNN(hp_comb['nHidden'], hp_comb['nLayers'], 
+                                  hp_comb['nOut'], hp_comb['type'], hp_comb['nonlinearity'], 
+                                  hp_comb['output_layer'], hp_comb['dropout'], 
+                                  hp_comb['normalisation'], hp_comb['include_incurreds'], 
+                                  hp_comb['include_covariates']).to(device)
             
+            elif hp_comb['model_type'] == "FNN":
+                model = ClaimsFNN(hp_comb['nLayers'], hp_comb['nHidden'], 
+                                  hp_comb['dropout'], hp_comb['output_layer'],
+                                  hp_comb['include_incurreds'], 
+                                  hp_comb['include_covariates']).to(device)
+
+            else:
+                ValueError('Invalid model type. Must be "RNN" or "FNN"')
+
             optimiser = optim.Adam(model.parameters(), lr=hp_comb['lr'])
 
             train_network(model, train_set, hp_comb, optimiser, verbose, val_set)
@@ -1489,7 +1941,7 @@ def plot_claim(preds_list, data, claim_no):
 def create_grid(target_cols, criterions, types, output_layers, 
                 nOuts, epochss, nHiddens, nLayerss, patiences, batch_sizes, 
                 lrs, nonlinearitys, dropouts, normalisations, 
-                include_incurredss, include_covariatess, transform_inputss):
+                include_incurredss, include_covariatess, transform_inputss, model_types):
     
     '''
     Inputs: lists of hyperparameter values
@@ -1501,7 +1953,7 @@ def create_grid(target_cols, criterions, types, output_layers,
                           output_layers, nOuts, epochss, nHiddens, nLayerss, 
                           patiences, batch_sizes, lrs, nonlinearitys, 
                           dropouts, normalisations, include_incurredss, 
-                          include_covariatess, transform_inputss):
+                          include_covariatess, transform_inputss, model_types):
         
         hyperparameter_grid.append({
             'target_col': params[0],
@@ -1520,7 +1972,8 @@ def create_grid(target_cols, criterions, types, output_layers,
             'normalisation': params[13],
             'include_incurreds': params[14],
             'include_covariates': params[15],
-            'transform_inputs': params[16]
+            'transform_inputs': params[16],
+            'model_type': params[17]
         })
 
     return hyperparameter_grid
