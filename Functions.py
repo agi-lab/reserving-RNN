@@ -89,6 +89,45 @@ class MSLE_with_penalty(nn.Module):
     def __str__(self):
         return self.__repr__()
 
+def initialise_weights(model):
+    """
+    Initialize weights of a PyTorch model, including handling RNNs, LSTMs, GRUs, Linear, 
+    BatchNorm, and LayerNorm layers.
+
+    - RNN/LSTM/GRU weights: Kaiming Normal
+    - Linear weights: Kaiming Normal
+    - BatchNorm/LayerNorm weights: Gamma (scale) = 1.0, Beta (shift) = 0.0
+    """
+    for name, param in model.named_parameters():
+        # Handle RNNs, LSTMs, and GRUs
+        if 'weight_ih' in name:  # Input-to-hidden weights
+            nn.init.kaiming_normal_(param, mode='fan_in', nonlinearity='relu')
+        elif 'weight_hh' in name:  # Hidden-to-hidden weights
+            nn.init.kaiming_normal_(param, mode='fan_in', nonlinearity='relu')
+        elif 'bias' in name:  # Bias terms
+            nn.init.zeros_(param)
+            
+            # Special handling for LSTM forget gate bias
+            if 'lstm' in name.lower() or 'gru' in name.lower():
+                hidden_size = param.shape[0] // 4  # Divide into gates for LSTM
+                param.data[hidden_size:2 * hidden_size] = 1.0  # Forget gate bias
+
+    # Handle all modules explicitly
+    for module in model.modules():
+        if isinstance(module, nn.Linear):  # Linear layers
+            nn.init.kaiming_normal_(module.weight, mode='fan_in', nonlinearity='relu')
+            if module.bias is not None:
+                nn.init.zeros_(module.bias)
+        elif isinstance(module, (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d)):  # BatchNorm
+            if module.weight is not None:  # Gamma
+                nn.init.ones_(module.weight)
+            if module.bias is not None:  # Beta
+                nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.LayerNorm):  # LayerNorm
+            if module.weight is not None:  # Gamma
+                nn.init.ones_(module.weight)
+            if module.bias is not None:  # Beta
+                nn.init.zeros_(module.bias)
 
 ### MODEL CLASSES #############################################################
 
@@ -1686,6 +1725,9 @@ def cross_validate(fp_in, fp_out, hyperparameter_grid, verbose=True):
             
         else:
             ValueError('Invalid model type. Must be "RNN" or "FNN"')
+
+        # Apply weight initialization
+        initialise_weights(model)
         
         optimiser = optim.Adam(model.parameters(), lr=hp_comb['lr'])
 
@@ -1828,6 +1870,9 @@ def final_test(fp_in, fp_out, hp_comb, iterations, verbose=True,
 
             else:
                 ValueError('Invalid model type. Must be "RNN" or "FNN"')
+
+            # Apply weight initialization
+            initialise_weights(model)
 
             optimiser = optim.Adam(model.parameters(), lr=hp_comb['lr'])
 
