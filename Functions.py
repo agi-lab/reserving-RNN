@@ -365,6 +365,7 @@ class ClaimsRNN(nn.Module):
 
         if self.normalisation:
             self.layer_norm1 = nn.LayerNorm(self.nFeatures)
+            self.dropout_layer = nn.Dropout(self.dropout)
 
             self.rnn_layers = nn.ModuleList()
             self.layer_norms_rnn = nn.ModuleList()
@@ -374,14 +375,13 @@ class ClaimsRNN(nn.Module):
 
                 if type == 'RNN':
                     self.rnn_layers.append(nn.RNN(input_size, nHidden, 1, 
-                                                batch_first=True, nonlinearity=nonlinearity, 
-                                                dropout=dropout))
+                                                batch_first=True, nonlinearity=nonlinearity))
                 elif type == 'LSTM':
                     self.rnn_layers.append(nn.LSTM(input_size, nHidden, 1, 
-                                                batch_first=True, dropout=dropout))
+                                                batch_first=True))
                 elif type == 'GRU':
                     self.rnn_layers.append(nn.GRU(input_size, nHidden, 1, 
-                                                batch_first=True, dropout=dropout))
+                                                batch_first=True))
                 else:
                     raise ValueError("type must be 'RNN', 'LSTM' or 'GRU'")
 
@@ -443,6 +443,8 @@ class ClaimsRNN(nn.Module):
 
                 out, nrows = pad_packed_sequence(out, batch_first=True)
                 out = self.layer_norms_rnn[i](out)
+                if i < self.nLayers - 1:
+                    out = self.dropout_layer(out)
                 out = pack_padded_sequence(out, nrows, batch_first=True, enforce_sorted=False)
         
         else:
@@ -480,7 +482,9 @@ class ClaimsRNN(nn.Module):
         out = self.relu(out)
 
         if self.normalisation:
-            out = self.batch_norm3(out)        
+            out = self.batch_norm3(out)      
+
+        out = self.dropout_layer(out)          
 
         out = self.fc4(out)
 
