@@ -12,7 +12,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 from torch.utils.data import Dataset
 import torch.optim as optim
-from torch.nn.utils.rnn import pack_padded_sequence
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from torch.nn.utils import clip_grad_norm_
 
 # to use gpu if available
@@ -365,26 +365,50 @@ class ClaimsRNN(nn.Module):
 
         if self.normalisation:
             self.layer_norm1 = nn.LayerNorm(self.nFeatures)
+
+            self.rnn_layers = nn.ModuleList()
+            self.layer_norms_rnn = nn.ModuleList()
+
+            for i in range(nLayers):
+                input_size = self.nFeatures if i == 0 else self.nHidden
+
+                if type == 'RNN':
+                    self.rnn_layers.append(nn.RNN(input_size, nHidden, 1, 
+                                                batch_first=True, nonlinearity=nonlinearity, 
+                                                dropout=dropout))
+                elif type == 'LSTM':
+                    self.rnn_layers.append(nn.LSTM(input_size, nHidden, 1, 
+                                                batch_first=True, dropout=dropout))
+                elif type == 'GRU':
+                    self.rnn_layers.append(nn.GRU(input_size, nHidden, 1, 
+                                                batch_first=True, dropout=dropout))
+                else:
+                    raise ValueError("type must be 'RNN', 'LSTM' or 'GRU'")
+
+                self.layer_norms_rnn.append(nn.LayerNorm(nHidden))
+
             self.layer_norm2 = nn.LayerNorm(nHidden)
+
             self.batch_norm1 = nn.BatchNorm1d(self.nConcatUnits)
             self.batch_norm2 = nn.BatchNorm1d(self.nConcatUnits)
             self.batch_norm3 = nn.BatchNorm1d(self.nConcatUnits)
 
-        if type == 'RNN':
-            self.rnn = nn.RNN(self.nFeatures, nHidden, nLayers, 
-                              batch_first=True, nonlinearity=nonlinearity, 
-                              dropout=dropout)
-
-        elif type == 'LSTM':
-            self.rnn = nn.LSTM(self.nFeatures, nHidden, nLayers, 
-                               batch_first=True, dropout=dropout)
-        
-        elif type == 'GRU':
-            self.rnn = nn.GRU(self.nFeatures, nHidden, nLayers, 
-                              batch_first=True, dropout=dropout)
-        
         else:
-            raise ValueError("type must be 'RNN', 'LSTM' or 'GRU'")
+            if type == 'RNN':
+                self.rnn = nn.RNN(self.nFeatures, nHidden, nLayers, 
+                                batch_first=True, nonlinearity=nonlinearity, 
+                                dropout=dropout)
+
+            elif type == 'LSTM':
+                self.rnn = nn.LSTM(self.nFeatures, nHidden, nLayers, 
+                                batch_first=True, dropout=dropout)
+            
+            elif type == 'GRU':
+                self.rnn = nn.GRU(self.nFeatures, nHidden, nLayers, 
+                                batch_first=True, dropout=dropout)
+            
+            else:
+                raise ValueError("type must be 'RNN', 'LSTM' or 'GRU'")
 
         # RNN output is reduced in size
         self.fc1 = nn.Linear(nHidden, self.nConcatUnits) # hard coding 64 units for now
@@ -409,7 +433,20 @@ class ClaimsRNN(nn.Module):
 
     def forward(self, x):
         # x[0] will be the packed datapoints, x[1:] will be the static covariates
-        out, ht = self.rnn(x[0])
+        if self.normalisation:
+            out, nrows = pad_packed_sequence(x[0], batch_first=True)
+            out = self.layer_norm1(out)
+            out = pack_padded_sequence(out, nrows, batch_first=True, enforce_sorted=False)
+
+            for i, rnn in enumerate(self.rnn_layers):
+                out, ht = rnn(out)  # RNN output
+
+                out, nrows = pad_packed_sequence(out, batch_first=True)
+                out = self.layer_norms_rnn[i](out)
+                out = pack_padded_sequence(out, nrows, batch_first=True, enforce_sorted=False)
+        
+        else:
+            out, ht = self.rnn(x[0])
 
         if self.type == 'LSTM':
             ht = ht[0]
@@ -418,12 +455,10 @@ class ClaimsRNN(nn.Module):
             ht = self.layer_norm2(ht)
 
         out = self.fc1(ht[-1,:,:])
+        out = self.relu(out)
 
         if self.normalisation:
             out = self.batch_norm1(out)
-
-        out = self.relu(out)
-
 
         if self.include_covariates:
             sev_embed = self.embedding_sev(x[3].long())
@@ -431,24 +466,21 @@ class ClaimsRNN(nn.Module):
 
             static_out = torch.cat((x[1], x[2], sev_embed[:, -1, :], age_embed[:, -1, :]), 1)
             static_out = self.fc2(static_out)
+            static_out = self.relu(static_out)
 
             if self.normalisation:
                 static_out = self.batch_norm2(static_out)
-            
-            static_out = self.relu(static_out)
 
             out = torch.cat((out, static_out), 1)
             
-
         else:
             out = torch.cat((out, x[1]), 1)
 
         out = self.fc3(out)
+        out = self.relu(out)
 
         if self.normalisation:
-            out = self.batch_norm3(out)
-
-        out = self.relu(out)
+            out = self.batch_norm3(out)        
 
         out = self.fc4(out)
 
