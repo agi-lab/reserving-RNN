@@ -1913,6 +1913,11 @@ def final_test(fp_in, fp_out, hp_comb, iterations, verbose=True,
     else:
         raise ValueError("pretrained must be True or False")
 
+    # manually capping claim size predictions
+    # largest in one of the datasets was $6m, so setting cap at $100m
+    preds_matrix[preds_matrix > 1e8] = 1e8
+
+
     # Assessing distribution of aggregate claims
     aggregate_preds = preds_matrix.sum(axis=1)
     aggregate_actuals = actuals.sum()
