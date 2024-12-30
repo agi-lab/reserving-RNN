@@ -129,6 +129,46 @@ def initialise_weights(model):
             if module.bias is not None:  # Beta
                 nn.init.zeros_(module.bias)
 
+def create_grid(target_cols, criterions, types, output_layers, 
+                nOuts, epochss, nHiddens, nLayerss, patiences, batch_sizes, 
+                lrs, nonlinearitys, dropouts, normalisations, 
+                include_incurredss, include_covariatess, transform_inputss, model_types):
+    
+    '''
+    Inputs: lists of hyperparameter values
+    Output: a list of dictionaries to be used in the cross_validate function'''
+
+    hyperparameter_grid = []
+
+    for params in product(target_cols, criterions, types, 
+                          output_layers, nOuts, epochss, nHiddens, nLayerss, 
+                          patiences, batch_sizes, lrs, nonlinearitys, 
+                          dropouts, normalisations, include_incurredss, 
+                          include_covariatess, transform_inputss, model_types):
+        
+        hyperparameter_grid.append({
+            'target_col': params[0],
+            'criterion': params[1],
+            'type': params[2],
+            'output_layer': params[3],
+            'nOut': params[4],
+            'epochs': params[5],
+            'nHidden': params[6],
+            'nLayers': params[7],
+            'patience': params[8],
+            'batch_size': params[9],
+            'lr': params[10],
+            'nonlinearity': params[11],
+            'dropout': params[12],
+            'normalisation': params[13],
+            'include_incurreds': params[14],
+            'include_covariates': params[15],
+            'transform_inputs': params[16],
+            'model_type': params[17]
+        })
+
+    return hyperparameter_grid
+
 ### MODEL CLASSES #############################################################
 
 class ClaimsDataset(Dataset):
@@ -2088,6 +2128,427 @@ def final_test(fp_in, fp_out, hp_comb, iterations, verbose=True,
     plt.ylabel('Frequency')
     plt.show()
 
+def train_multiple_initialisations(fp_in, fp_out, hp_comb, iterations, verbose=True):
+    '''Retrains the model on the test set multiple times, producing graphical 
+       summaries for the first iteration as well as some graphical summaries 
+       of the distribution of predictions
+       
+       Args:
+         fp_in: filepath to the folder with the test indexes and sets
+         fp_out: filepath to the folder that stores the trained model weights
+         hp_comb: dictionary of hyperparameters
+         iterations: number of times to retrain the model
+         verbose: whether to print written outputs and progress to console'''
+
+    train_set = ClaimsDataset(hp_comb['target_col'], 
+                              fp_in + 'train_index.csv', 
+                              fp_in + 'train_set.csv', 
+                              hp_comb['include_incurreds'],
+                              hp_comb['include_covariates'],
+                              hp_comb['transform_inputs'],
+                              hp_comb['model_type'])
+
+    val_set = ClaimsDataset(hp_comb['target_col'], 
+                            fp_in + 'val_index.csv', 
+                            fp_in + 'val_set.csv', 
+                            hp_comb['include_incurreds'],
+                            hp_comb['include_covariates'],
+                            hp_comb['transform_inputs'],
+                            hp_comb['model_type'])
+
+    for i in range(iterations):
+        print(f'Iteration {i}')
+
+        if hp_comb['model_type'] == "RNN":
+            model = ClaimsRNN(hp_comb['nHidden'], hp_comb['nLayers'], 
+                                hp_comb['nOut'], hp_comb['type'], hp_comb['nonlinearity'], 
+                                hp_comb['output_layer'], hp_comb['dropout'], 
+                                hp_comb['normalisation'], hp_comb['include_incurreds'], 
+                                hp_comb['include_covariates']).to(device)
+        
+        elif hp_comb['model_type'] == "FNN":
+            model = ClaimsFNN(hp_comb['nLayers'], hp_comb['nHidden'], 
+                                hp_comb['dropout'], hp_comb['output_layer'],
+                                hp_comb['normalisation'],
+                                hp_comb['include_incurreds'], 
+                                hp_comb['include_covariates']).to(device)
+
+        else:
+            ValueError('Invalid model type. Must be "RNN" or "FNN"')
+
+        # Apply weight initialization
+        initialise_weights(model)
+
+        optimiser = optim.Adam(model.parameters(), lr=hp_comb['lr'])
+
+        train_network(model, train_set, hp_comb, optimiser, verbose, val_set)
+            
+        torch.save(model.state_dict(), fp_out + 'seed ' + fp_in.split('_')[-1][:-1] + 'run ' + i + '.pt')
+
+def test_multiple_initialisations(fp_in, fp_out, hp_comb, iterations, verbose=True):
+    test_set = ClaimsDataset(hp_comb['target_col'], 
+                            fp_in + 'test_index.csv', 
+                            fp_in + 'test_set.csv', 
+                            hp_comb['include_incurreds'],
+                            hp_comb['include_covariates'],
+                            hp_comb['transform_inputs'],
+                            hp_comb['model_type'])
+    
+    preds_matrix = np.zeros(shape=(iterations, len(test_set.index.index)))
+    vsInc_list = np.zeros(shape=iterations)
+    weighted_vsInc_list = np.zeros(shape=iterations)
+
+    for i in range(iterations):
+        print(f'Iteration {i}')
+
+        if hp_comb['model_type'] == "RNN":
+            model = ClaimsRNN(hp_comb['nHidden'], hp_comb['nLayers'], 
+                                hp_comb['nOut'], hp_comb['type'], hp_comb['nonlinearity'], 
+                                hp_comb['output_layer'], hp_comb['dropout'], 
+                                hp_comb['normalisation'], hp_comb['include_incurreds'], 
+                                hp_comb['include_covariates']).to(device)
+        
+        elif hp_comb['model_type'] == "FNN":
+            model = ClaimsFNN(hp_comb['nLayers'], hp_comb['nHidden'], 
+                                hp_comb['dropout'], hp_comb['output_layer'],
+                                hp_comb['normalisation'],
+                                hp_comb['include_incurreds'], 
+                                hp_comb['include_covariates']).to(device)
+
+        else:
+            ValueError('Invalid model type. Must be "RNN" or "FNN"')
+
+        # Load trained weights
+        model.load_state_dict(torch.load(fp_out + 'seed ' + fp_in.split('_')[-1][:-1] + 'run ' + i + '.pt'))
+
+        # testing the model somehow
+        actuals, preds, incurreds = get_preds_actuals(model, test_set, 
+                                                          hp_comb, verbose)
+
+        preds_matrix[i] = preds
+        preds.to_frame().T.to_csv(fp_out, mode='a', header=False, 
+                                    index=False)
+        
+        vsInc_list[i] = get_vsInc(actuals, preds, incurreds)
+        weighted_vsInc_list[i] = get_weighted_vsInc(actuals, preds, 
+                                                    incurreds)
+        
+
+    # manually capping claim size predictions
+    # largest in one of the datasets was $6m, so setting cap at $100m
+    preds_matrix[preds_matrix > 1e8] = 1e8
+
+
+    # Assessing distribution of aggregate claims
+    aggregate_preds = preds_matrix.sum(axis=1)
+    aggregate_actuals = actuals.sum()
+    aggregate_incurreds = incurreds.sum()
+
+    val_date = 40
+
+    # finding aggregate incurred at the valuation date (calendar quarter 40)
+    preds_val = preds_matrix[:, test_set.index['pred_time'] == val_date]
+    actuals_val = actuals[test_set.index['pred_time'] == val_date]
+    #print(f'actuals_val: {actuals_val}')
+    incurreds_val = incurreds[test_set.index['pred_time'] == val_date]
+    #print(f'incurreds_val: {incurreds_val}')
+
+    aggregate_preds_val = preds_val.sum(axis=1)
+    aggregate_actuals_val = actuals_val.sum()
+    aggregate_incurreds_val = incurreds_val.sum()
+
+    # finding total paid and ocl at the valuation date
+    test_paid = test_set.set.loc[test_set.set['pred_time'] == val_date, 
+                                 ['claim_no', 'paid']].groupby(['claim_no'])['paid'].max()
+
+    #print(f'test_paid: {test_paid}')
+
+    val_date_paid = test_paid.sum()
+
+    #print(f'actual ocls: {actuals_val - test_paid.values}')
+    model_ocls_run1 = preds_val[0] - test_paid.values
+    #print(f'model ocls (1st run): {model_ocls_run1}')
+    #print(f'incurred ocls: {incurreds_val - test_paid.values}')
+
+    print(f'proportion of negative model ocls at valuation date: {np.mean((model_ocls_run1) < 0)}')
+    print(f'negative model ocls at valuation date: {(model_ocls_run1)[(model_ocls_run1) < 0]}')
+    print(f'sum of negative model ocls at valuation date: {np.sum((model_ocls_run1)[(model_ocls_run1) < 0])}')
+    print(f'sum of actual ocls from preds with negative ocl: {np.sum((actuals_val - test_paid.values)[(model_ocls_run1) < 0])}')
+    print(f'sum of all actual ocls: {np.sum(actuals_val - test_paid.values)}\n')
+
+    print(f'proportion of negative model claim sizes at valuation date: {np.mean(preds_val[0] < 0)}')
+    print(f'negative model claim sizes at valuation date: {preds_val[0][preds_val[0] < 0]}')
+    print(f'sum of negative model claim sizes at valuation date: {np.sum(preds_val[0][preds_val[0] < 0])}\n')
+
+
+    paids = test_set.set.loc[:,['claim_no', 'pred_time', 'paid']].groupby(['claim_no', 'pred_time'])['paid'].max()
+    model_ocls = preds_matrix[0] - paids
+
+    print(f"proportion of negative model OCLs: {np.mean(model_ocls < 0)}")
+    print(f'sum of negative model OCLs: {np.sum((model_ocls)[(model_ocls) < 0])}')
+    actuals_copy = actuals.copy().reset_index(drop=True)
+    paids_copy = paids.copy().reset_index(drop=True)
+    model_ocls_copy = model_ocls.copy().reset_index(drop=True)
+    print(f'sum of actual OCLs from preds with negative OCL: {np.sum((actuals_copy - paids_copy)[(model_ocls_copy) < 0])}')
+    print(f'sum of all actual OCLs: {np.sum(actuals_copy - paids_copy)}')
+
+
+    ocl_preds = aggregate_preds_val - [val_date_paid] * len(aggregate_preds_val)
+    ocl_actuals = aggregate_actuals_val - val_date_paid
+    ocl_incurreds = aggregate_incurreds_val - val_date_paid
+
+    # weighted vsInc at the valuation date
+    weighted_vsInc_list_val = np.array([get_weighted_vsInc(actuals_val, 
+                                                           preds, 
+                                                           incurreds_val)
+                                        for preds in preds_val])
+
+    # PLOTTING RESULTS ACROSS ALL WEIGHT INITIALISATIONS
+
+    # Plotting aggregate claim size by dev quarter and cal quarter (mean across all iterations)
+    aggregate_by_time(test_set.index, actuals, preds_matrix, incurreds, 'dev_quarter')
+    aggregate_by_time(test_set.index, actuals, preds_matrix, incurreds, 'pred_time')
+
+    # Histogram of aggregate claims across all prediction times
+    plt.hist(aggregate_preds, weights=(np.zeros_like(aggregate_preds) + 1. / 
+                                       aggregate_preds.size), color='thistle')
+    
+
+    plt.xlabel('Aggregate predictions')
+    plt.ylabel('Frequency')
+    plt.show()
+
+    # Histogram of distribution of vsInc accuracy
+    plt.hist(vsInc_list, weights=(np.zeros_like(vsInc_list) + 1. / 
+                                  vsInc_list.size), color='lightgreen')
+    
+    plt.xlabel('vsInc accuracy (%)')
+    plt.ylabel('Frequency')
+    plt.show()
+
+    # Histogram of distribution of weighted vsInc
+    plt.hist(weighted_vsInc_list, weights=(np.zeros_like(weighted_vsInc_list) + 
+                                           1. / weighted_vsInc_list.size), 
+                                           color='lightgreen')
+    
+    plt.xlabel('weighted vsInc (%)')
+    plt.ylabel('Frequency')
+    plt.show()
+
+    # Histogram of aggregate claims at the valuation date
+    plt.hist(aggregate_preds_val, weights=(np.zeros_like(aggregate_preds_val) + 1. / 
+                                       aggregate_preds_val.size), color='thistle')
+    
+    plt.axvline(aggregate_actuals_val, color='dodgerblue', linestyle='dashed', 
+                linewidth=2)
+    
+    plt.axvline(aggregate_incurreds_val, color='red', linestyle='dashed', 
+                linewidth=2)
+
+    plt.xlabel('Aggregate predictions at valuation date')
+    plt.ylabel('Frequency')
+    plt.show()
+
+    # Histogram of weighted vsInc at the valuation date
+    plt.hist(weighted_vsInc_list_val, 
+             weights=(np.zeros_like(weighted_vsInc_list_val) + 
+                      1. / weighted_vsInc_list_val.size), 
+             color='lightgreen')
+    
+    plt.xlabel('weighted vsInc (%) at valuation date')
+    plt.ylabel('Frequency')
+    plt.show()
+
+    # Histogram of OCL at the valuation date
+    plt.hist(ocl_preds, weights=(np.zeros_like(ocl_preds) + 1. / 
+                                       ocl_preds.size), color='thistle')
+    
+    plt.axvline(ocl_actuals, color='dodgerblue', linestyle='dashed', 
+                linewidth=2)
+    
+    plt.axvline(ocl_incurreds, color='red', linestyle='dashed', 
+                linewidth=2)
+
+    plt.xlabel('OCL at valuation date')
+    plt.ylabel('Frequency')
+    plt.show()
+
+
+
+def train_multiple_datasets(fp_py, fp_out, seed_base, max_iter, hp_comb):
+    for i in range(1, max_iter + 1):
+        torch.manual_seed(1)
+        fp_py_full = fp_py + str(i + seed_base) + '/'
+
+        print('Seed: ' + str(i + seed_base))
+
+        train_set = ClaimsDataset(hp_comb['target_col'], 
+                                fp_py_full + 'train_index.csv', 
+                                fp_py_full + 'train_set.csv', 
+                                hp_comb['include_incurreds'],
+                                hp_comb['include_covariates'],
+                                hp_comb['transform_inputs'],
+                                hp_comb['model_type'])
+
+        val_set = ClaimsDataset(hp_comb['target_col'], 
+                                fp_py_full + 'val_index.csv', 
+                                fp_py_full + 'val_set.csv', 
+                                hp_comb['include_incurreds'],
+                                hp_comb['include_covariates'],
+                                hp_comb['transform_inputs'],
+                                hp_comb['model_type'])
+
+        if hp_comb['model_type'] == 'RNN':
+            model = ClaimsRNN(hp_comb['nHidden'], hp_comb['nLayers'], 
+                                hp_comb['nOut'], hp_comb['type'], hp_comb['nonlinearity'], 
+                                hp_comb['output_layer'], hp_comb['dropout'], 
+                                hp_comb['normalisation'], hp_comb['include_incurreds'], 
+                                hp_comb['include_covariates']).to(device)
+                
+        elif hp_comb['model_type'] == 'FNN':
+            model = ClaimsFNN(hp_comb['nLayers'], hp_comb['nHidden'], 
+                                hp_comb['dropout'], hp_comb['output_layer'],
+                                hp_comb['normalisation'],
+                                hp_comb['include_incurreds'], 
+                                hp_comb['include_covariates']).to(device)
+
+        else:
+            ValueError('Invalid model type. Must be "RNN" or "FNN"')
+
+        initialise_weights(model)
+
+        optimiser = optim.Adam(model.parameters(), lr=hp_comb['lr'])
+
+        train_network(model, train_set, hp_comb, optimiser, True, val_set)
+
+        torch.save(model.state_dict(), fp_out + 'seed ' + str(i + seed_base) + '.pt')
+
+def test_multiple_datasets(fp_py, fp_out, seed_base, max_iter, hp_comb):
+    results = []
+
+    for i in range(1, max_iter + 1):
+        fp_py_full = fp_py + str(i + seed_base) + '/'
+
+        test_set = ClaimsDataset(hp_comb['target_col'], 
+                                fp_py_full + 'test_index.csv', 
+                                fp_py_full + 'test_set.csv', 
+                                hp_comb['include_incurreds'],
+                                hp_comb['include_covariates'],
+                                hp_comb['transform_inputs'],
+                                hp_comb['model_type'])
+
+        if hp_comb['model_type'] == 'RNN':
+            model = ClaimsRNN(hp_comb['nHidden'], hp_comb['nLayers'], 
+                                hp_comb['nOut'], hp_comb['type'], hp_comb['nonlinearity'], 
+                                hp_comb['output_layer'], hp_comb['dropout'], 
+                                hp_comb['normalisation'], hp_comb['include_incurreds'], 
+                                hp_comb['include_covariates']).to(device)
+                
+        elif hp_comb['model_type'] == 'FNN':
+            model = ClaimsFNN(hp_comb['nLayers'], hp_comb['nHidden'], 
+                                hp_comb['dropout'], hp_comb['output_layer'],
+                                hp_comb['normalisation'],
+                                hp_comb['include_incurreds'], 
+                                hp_comb['include_covariates']).to(device)
+
+        else:
+            ValueError('Invalid model type. Must be "RNN" or "FNN"')
+
+        # load saved weights
+        model.load_state_dict(torch.load(fp_out + 'seed ' + str(i + seed_base) + '.pt'))
+
+        actuals, preds, incurreds = get_preds_actuals(model, test_set, hp_comb, True)
+            
+        vsInc = get_vsInc(actuals, preds, incurreds)    
+        weighted_vsInc = get_weighted_vsInc(actuals, preds, incurreds)
+
+        val_date = 40
+
+        # finding aggregate incurred at the valuation date (calendar quarter 40)
+        preds_val = preds[test_set.index['pred_time'] == val_date]
+        actuals_val = actuals[test_set.index['pred_time'] == val_date]
+        incurreds_val = incurreds[test_set.index['pred_time'] == val_date]
+
+        aggregate_preds_val = preds_val.sum()
+        aggregate_actuals_val = actuals_val.sum()
+        aggregate_incurreds_val = incurreds_val.sum()
+
+        # finding total paid and ocl at the valuation date
+        test_paid = test_set.set.loc[test_set.set['pred_time'] == val_date, 
+                                    ['claim_no', 'paid']].groupby(['claim_no']).max()
+        
+        val_date_paid = test_paid.sum()['paid']
+
+        ocl_preds_val = aggregate_preds_val - val_date_paid
+        ocl_actuals_val = aggregate_actuals_val - val_date_paid
+        ocl_incurreds_val = aggregate_incurreds_val - val_date_paid
+
+        ocl_error_preds = round_threshold(abs(ocl_preds_val - ocl_actuals_val) / ocl_actuals_val)
+        ocl_error_incurreds = round_threshold(abs(ocl_incurreds_val - ocl_actuals_val) / ocl_actuals_val)
+
+        # weighted vsInc at the valuation date
+        weighted_vsInc_val = round_threshold(get_weighted_vsInc(actuals_val, preds_val, incurreds_val))
+
+        results.append({'Seed': i + seed_base, 
+                        'vsInc': vsInc,
+                        'weighted_vsInc': weighted_vsInc,
+                        'ocl_actuals_val': ocl_actuals_val, 
+                        'ocl_preds_val': ocl_preds_val, 
+                        'ocl_incurreds_val': ocl_incurreds_val, 
+                        'ocl_error_preds_val': ocl_error_preds, 
+                        'ocl_error_incurreds_val': ocl_error_incurreds, 
+                        'weighted_vsInc_val': weighted_vsInc_val})
+
+    results = pd.DataFrame(results)
+    #print(results)
+
+    # Histogram of distribution of vsInc accuracy
+    plt.hist(results['vsInc'], weights=(np.zeros_like(results['vsInc']) + 1. / 
+                                  results['vsInc'].size), color='lightgreen')
+    
+    plt.xlabel('vsInc accuracy (%)')
+    plt.ylabel('Frequency')
+    plt.show()
+
+    # Histogram of distribution of weighted vsInc
+    plt.hist(results['weighted_vsInc'], weights=(np.zeros_like(results['weighted_vsInc']) + 
+                                           1. / results['weighted_vsInc'].size), 
+                                           color='lightgreen')
+    
+    plt.xlabel('weighted vsInc (%)')
+    plt.ylabel('Frequency')
+    plt.show()
+
+    # Histogram of weighted vsInc at the valuation date
+    plt.hist(results['weighted_vsInc_val'], 
+             weights=(np.zeros_like(results['weighted_vsInc_val']) + 
+                      1. / results['weighted_vsInc_val'].size), 
+             color='lightgreen')
+    
+    plt.xlabel('weighted vsInc (%) at valuation date')
+    plt.ylabel('Frequency')
+    plt.show()
+
+    # Boxplots of OCL errors at valuation date
+    sns.boxplot(data=results[['ocl_error_preds_val', 'ocl_error_incurreds_val']])
+    plt.xticks([0, 1], ['Predictions', 'Incurreds'])
+    plt.ylabel('OCL error (%)')
+    plt.title('OCL errors at valuation date')
+    plt.show()
+
+    # plot showing OCLs at valuation date
+    plt.plot(results['Seed'], results['ocl_actuals_val'], label='Actuals', linestyle='', marker='o')
+    plt.plot(results['Seed'], results['ocl_preds_val'], label='Predictions', linestyle='', marker='o')
+    plt.plot(results['Seed'], results['ocl_incurreds_val'], label='Incurreds', linestyle='', marker='o')
+
+    #plt.xticks(results['Seed'])
+    plt.ylim(0, results[['ocl_actuals_val', 'ocl_preds_val', 'ocl_incurreds_val']].max(axis=None) * 1.1)
+    plt.xlabel('Seed')
+    plt.ylabel('OCL at valuation date')
+    plt.legend()
+    plt.show()
+
+
 def plot_claim(preds_list, data, claim_no):
     '''Plots ultimate claim cost, incurred estimates and model predictions 
     for a given claim. Prelimiary function, not used in final analysis
@@ -2141,42 +2602,3 @@ def plot_claim(preds_list, data, claim_no):
     plt.step(rnn_pred_times, rnn_preds, label='RNN_preds', where = 'post')
     plt.legend()
 
-def create_grid(target_cols, criterions, types, output_layers, 
-                nOuts, epochss, nHiddens, nLayerss, patiences, batch_sizes, 
-                lrs, nonlinearitys, dropouts, normalisations, 
-                include_incurredss, include_covariatess, transform_inputss, model_types):
-    
-    '''
-    Inputs: lists of hyperparameter values
-    Output: a list of dictionaries to be used in the cross_validate function'''
-
-    hyperparameter_grid = []
-
-    for params in product(target_cols, criterions, types, 
-                          output_layers, nOuts, epochss, nHiddens, nLayerss, 
-                          patiences, batch_sizes, lrs, nonlinearitys, 
-                          dropouts, normalisations, include_incurredss, 
-                          include_covariatess, transform_inputss, model_types):
-        
-        hyperparameter_grid.append({
-            'target_col': params[0],
-            'criterion': params[1],
-            'type': params[2],
-            'output_layer': params[3],
-            'nOut': params[4],
-            'epochs': params[5],
-            'nHidden': params[6],
-            'nLayers': params[7],
-            'patience': params[8],
-            'batch_size': params[9],
-            'lr': params[10],
-            'nonlinearity': params[11],
-            'dropout': params[12],
-            'normalisation': params[13],
-            'include_incurreds': params[14],
-            'include_covariates': params[15],
-            'transform_inputs': params[16],
-            'model_type': params[17]
-        })
-
-    return hyperparameter_grid
