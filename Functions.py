@@ -602,7 +602,9 @@ class ClaimsFNN(nn.Module):
 ### TRAINING/TESTING FUNCTIONS ################################################
 
 def train_network(model, train_data, hp_comb, optimiser, verbose=True, 
-                  val_data=None, cv_loss_list=None, cv_vsInc_list=None, cv_uie_list=None):
+                  val_data=None, cv_loss_list=None, cv_vsInc_list=None, 
+                  cv_weighted_vsInc_claimsize_list=None, 
+                  cv_weighted_vsInc_ocl_list=None, cv_uie_list=None):
     
     """
     Args:
@@ -621,9 +623,13 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
     if val_data is not None:
         val_loss_list = []
         val_vsInc_list = []
+        val_weighted_vsInc_claimsize_list = []
+        val_weighted_vsInc_ocl_list = []
         val_uie_list = []
         best_val_loss = np.inf
         best_val_vsInc = 0
+        best_val_weighted_vsInc_claimsize = 0
+        best_val_weighted_vsInc_ocl = 0
         best_val_uie = np.inf
         best_weights = None
         patience_counter = 0
@@ -638,9 +644,11 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
         total_loss = 0
         total_datapoints = 0
         total_vsInc = 0
+        total_weighted_vsInc_claimsize = 0
+        total_weighted_vsInc_ocl = 0
         total_uie = 0
-        total_weighted_vsinc = 0
-        total_observation_sizes = 0
+        total_ultimates = 0
+        total_ocls = 0
 
         for batch in trainloader:
 
@@ -830,10 +838,14 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
             total_vsInc += sum(torch.abs((ultimates-preds)) < 
                                torch.abs((ultimates-latest_incurreds)))
             
-            total_weighted_vsinc += sum(ultimates * (torch.abs((ultimates-preds)) < 
+            total_weighted_vsInc_claimsize += sum(ultimates * (torch.abs((ultimates-preds)) < 
                                         torch.abs((ultimates-latest_incurreds))))
             
-            total_observation_sizes += sum(ultimates)
+            total_weighted_vsInc_ocl += sum(true_ocls * (torch.abs((ultimates-preds)) < 
+                                        torch.abs((ultimates-latest_incurreds))))
+            
+            total_ultimates += sum(ultimates)
+            total_ocls += sum(true_ocls)
             
             # uie is not being included in the paper, but useful as a diagnostic during training
             total_uie+=sum(torch.logical_and((preds < latest_incurreds), 
@@ -845,13 +857,15 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
         vs_incurred_accuracy = total_vsInc / total_datapoints * 100
         uie = total_uie / total_datapoints * 100
         total_loss = total_loss / total_datapoints
-        weighted_vsinc = total_weighted_vsinc / total_observation_sizes * 100
+        weighted_vsinc_claimsize = total_weighted_vsInc_claimsize / total_ultimates * 100
+        weighted_vsinc_ocl = total_weighted_vsInc_ocl / total_ocls * 100
 
         if verbose:
             print(f'Epoch {epoch}: '
                   f'training loss = {round_threshold(total_loss):,}, '
                   f'vsInc = {vs_incurred_accuracy:.2f}%, '
-                  f'weighted vsInc = {weighted_vsinc:.2f}%, '
+                  f'weighted vsInc (Claim Size) = {weighted_vsinc_claimsize:.2f}%, '
+                  f'weighted vsInc (OCL) = {weighted_vsinc_ocl:.2f}%, '
                   f'UIE = {uie:.2f}%')
 
         # Validation
@@ -862,12 +876,16 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
                 
             test_network(model, val_data, hp_comb, val_loss_list=val_loss_list, 
                          val_vsInc_list=val_vsInc_list, 
+                         val_weighted_vsInc_claimsize_list=val_weighted_vsInc_claimsize_list,
+                         val_weighted_vsInc_ocl_list=val_weighted_vsInc_ocl_list,
                          val_uie_list=val_uie_list, verbose=verbose)
 
             # Early stopping
             if val_loss_list[-1] < best_val_loss:
                 best_val_loss = val_loss_list[-1]
                 best_val_vsInc = val_vsInc_list[-1].item()
+                best_val_weighted_vsInc_claimsize = val_weighted_vsInc_claimsize_list[-1].item()
+                best_val_weighted_vsInc_ocl = val_weighted_vsInc_ocl_list[-1].item()
                 best_val_uie = val_uie_list[-1].item()
                 patience_counter = 0
                 best_weights = deepcopy(model.state_dict())
@@ -881,6 +899,10 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
                     cv_loss_list.append(best_val_loss)
                 if cv_vsInc_list is not None:
                     cv_vsInc_list.append(best_val_vsInc)
+                if cv_weighted_vsInc_claimsize_list is not None:
+                    cv_weighted_vsInc_claimsize_list.append(best_val_weighted_vsInc_claimsize)
+                if cv_weighted_vsInc_ocl_list is not None:
+                    cv_weighted_vsInc_ocl_list.append(best_val_weighted_vsInc_ocl)
                 if cv_uie_list is not None:
                     cv_uie_list.append(best_val_uie)
                 
@@ -889,6 +911,8 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
                     print(f'Validation: '
                           f'loss = {round_threshold(best_val_loss):,}, '
                           f'vsInc = {best_val_vsInc:.2f}%, '
+                          f'weighted vsInc (Claim Size) = {best_val_weighted_vsInc_claimsize:.2f}%, '
+                          f'weighted vsInc (OCL) = {best_val_weighted_vsInc_ocl:.2f}%, '
                           f'UIE = {best_val_uie:.2f}%\n')
                     
                 break
@@ -897,21 +921,30 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
     if ((epoch == hp_comb['epochs'] - 1) and 
         (val_data is not None) and 
         (cv_loss_list is not None) and 
-        (cv_vsInc_list is not None)):
+        (cv_vsInc_list is not None) and
+        (cv_weighted_vsInc_claimsize_list is not None) and
+        (cv_weighted_vsInc_ocl_list is not None) and
+        (cv_uie_list is not None)):
 
         model.load_state_dict(best_weights)
         cv_loss_list.append(best_val_loss)
         cv_vsInc_list.append(best_val_vsInc)
+        cv_weighted_vsInc_claimsize_list.append(best_val_weighted_vsInc_claimsize)
+        cv_weighted_vsInc_ocl_list.append(best_val_weighted_vsInc_ocl)
         cv_uie_list.append(best_val_uie)
 
         if verbose:
             print(f'\nNo early stopping')
             print(f'Validation: loss = {round_threshold(best_val_loss):,}, '
                   f'vsInc = {best_val_vsInc:.2f}%, '
+                  f'weighted vsInc (Claim Size) = {best_val_weighted_vsInc_claimsize:.2f}%, '
+                  f'weighted vsInc (OCL) = {best_val_weighted_vsInc_ocl:.2f}%, '
                   f'UIE = {best_val_uie:.2f}%\n')
             
 def test_network(model, test_data, hp_comb, preds_list=None, verbose=True, 
-                 val_loss_list=None, val_vsInc_list=None, val_uie_list=None):
+                 val_loss_list=None, val_vsInc_list=None, 
+                 val_weighted_vsInc_claimsize_list=None, 
+                 val_weighted_vsInc_ocl_list=None, val_uie_list=None):
     
     """Args:
         preds_list: empty list to append predictions to
@@ -927,9 +960,11 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
     total_loss = 0
     total_datapoints = 0
     total_vsInc = 0
+    total_weighted_vsInc_claimsize = 0
+    total_weighted_vsInc_ocl = 0
     total_uie = 0
-    total_weighted_vsinc = 0
-    total_observation_sizes = 0
+    total_ultimates = 0
+    total_ocls = 0
 
     # set model to test mode
     model.eval()
@@ -1109,10 +1144,14 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
             total_vsInc += sum(torch.abs((ultimates-preds)) < 
                                torch.abs((ultimates-latest_incurreds)))
             
-            total_weighted_vsinc += sum(ultimates * (torch.abs((ultimates-preds)) < 
+            total_weighted_vsInc_claimsize += sum(ultimates * (torch.abs((ultimates-preds)) < 
                                         torch.abs((ultimates-latest_incurreds))))
             
-            total_observation_sizes += sum(ultimates)
+            total_weighted_vsInc_ocl += sum(true_ocls * (torch.abs((ultimates-preds)) <
+                                        torch.abs((ultimates-latest_incurreds))))
+            
+            total_ultimates += sum(ultimates)
+            total_ocls += sum(true_ocls)
             
             total_uie+=sum(torch.logical_and((preds < latest_incurreds), 
                                              (torch.abs((ultimates-preds)) > 
@@ -1126,12 +1165,14 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
         vs_incurred_accuracy = total_vsInc / total_datapoints * 100
         uie = total_uie / total_datapoints * 100
         total_loss = total_loss / total_datapoints
-        weighted_vsinc = total_weighted_vsinc / total_observation_sizes * 100
+        weighted_vsinc_claimsize = total_weighted_vsInc_claimsize / total_ultimates * 100
+        weighted_vsinc_ocl = total_weighted_vsInc_ocl / total_ocls * 100
 
         if verbose:
             print(f'loss = {round_threshold(total_loss):,}, '
                   f'vsInc = {vs_incurred_accuracy:.2f}%, '
-                  f'weighted vsInc = {weighted_vsinc:.2f}%, '
+                  f'weighted vsInc (Claim Size) = {weighted_vsinc_claimsize:.2f}%, '
+                  f'weighted vsInc (OCL) = {weighted_vsinc_ocl:.2f}%, '
                   f'UIE = {uie:.2f}%')
 
         if isinstance(val_loss_list, list):
@@ -1139,6 +1180,12 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
 
         if isinstance(val_vsInc_list, list):
             val_vsInc_list.append(vs_incurred_accuracy)
+
+        if isinstance(val_weighted_vsInc_claimsize_list, list):
+            val_weighted_vsInc_claimsize_list.append(weighted_vsinc_claimsize)
+
+        if isinstance(val_weighted_vsInc_ocl_list, list):
+            val_weighted_vsInc_ocl_list.append(weighted_vsinc_ocl)
 
         if isinstance(val_uie_list, list):
             val_uie_list.append(uie)
@@ -1185,9 +1232,13 @@ def get_losses(actuals, preds, incurreds, dataset, hp_comb):
 def get_vsInc(actuals, preds, incurreds):
     return 100 * np.mean(np.abs((actuals-preds)) < np.abs((actuals-incurreds)))
 
-def get_weighted_vsInc(actuals, preds, incurreds):
+def get_weighted_vsInc_claimsize(actuals, preds, incurreds):
     return 100 * np.average(np.abs((actuals-preds)) < 
                             np.abs((actuals-incurreds)), weights=actuals)
+
+def get_weighted_vsInc_ocl(actuals, preds, incurreds, ocls):
+    return 100 * np.average(np.abs((actuals-preds)) < 
+                            np.abs((actuals-incurreds)), weights=ocls)
 
 def get_preds_actuals(model, test_data, param_dict, verbose=False):
     '''Note: 'actuals' refers to the ultimate claim size
@@ -1206,15 +1257,18 @@ def get_preds_actuals(model, test_data, param_dict, verbose=False):
     preds_list = []
 
     test_network(model, test_data, param_dict, preds_list=preds_list, verbose=verbose, 
-                 val_loss_list=None, val_vsInc_list=None, val_uie_list=None)
+                 val_loss_list=None, val_vsInc_list=None, 
+                 val_weighted_vsInc_claimsize_list=None, 
+                 val_weighted_vsInc_ocl_list=None, val_uie_list=None)
 
     preds_list = pd.Series(preds_list)
     actuals_list = test_data.index["claim_size"]
     incurreds_list = test_data.index["latest_incurred"]
+    ocls_list = test_data.index["true_ocl"]
 
-    return actuals_list, preds_list, incurreds_list
+    return actuals_list, preds_list, incurreds_list, ocls_list
 
-def get_latest(test_data, actuals, preds, incurreds):
+def get_latest(test_data, actuals, preds, incurreds, ocls):
     '''Finds the latest prediction for each claim and returns the latest model
        predictions, and associated actuals and case estimates'''
 
@@ -1230,38 +1284,46 @@ def get_latest(test_data, actuals, preds, incurreds):
     latest_preds = np.array(preds)[indicator]
     latest_actuals = actuals[indicator]
     latest_incurreds = incurreds[indicator]
+    latest_ocls = ocls[indicator]
 
     latest_data = deepcopy(test_data)
     latest_data.index = test_data.index[indicator]
 
-    return latest_actuals, latest_preds, latest_incurreds, latest_data
+    return latest_actuals, latest_preds, latest_incurreds, latest_ocls, latest_data
 
-def get_dev_quarter(test_data, actuals, preds, incurreds, dev_quarter):
+def get_dev_quarter(test_data, actuals, preds, incurreds, ocls, dev_quarter):
     '''Finds the predictions for a specific development quarter and returns the
        model predictions, and associated actuals and case estimates'''
     indicator = test_data.index['dev_quarter'] == dev_quarter
     dev_actuals = actuals[indicator]
     dev_preds = preds[indicator]
     dev_incurreds = incurreds[indicator]
+    dev_ocls = ocls[indicator]
 
     dev_data = deepcopy(test_data)
     dev_data.index = test_data.index[indicator]
 
-    return dev_actuals, dev_preds, dev_incurreds, dev_data
+    return dev_actuals, dev_preds, dev_incurreds, dev_ocls, dev_data
 
-def aggregate_by_time(index_data, actuals, preds, incurreds, time_str):
+def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
     '''Plots aggregate claims, vsInc and weighted vsInc over time, 
-       either calendar or development'''
+       either calendar or development
+       
+       time_str should be either 'pred_time' (for calendar quarter results), 
+       'dev_quarter' for 'development' quarter results (i.e. time since notification, not since occurrence),
+       or 'occ_quarter' for occurrence quarter results'''
 
     times = np.sort(index_data[time_str].unique())
     
     actuals_by_time = np.zeros(len(times))
     incurreds_by_time = np.zeros(len(times))
+    ocls_by_time = np.zeros(len(times))
 
     if preds.ndim == 1:
         preds_by_time = np.zeros(len(times))
         vsInc_by_time = np.zeros(len(times))
-        weighted_vsInc_by_time = np.zeros(len(times))
+        weighted_vsInc_claimsize_by_time = np.zeros(len(times))
+        weighted_vsInc_ocl_by_time = np.zeros(len(times))
 
     elif preds.ndim == 2:
         preds_by_time = np.zeros((preds.shape[0], len(times)))
@@ -1270,9 +1332,12 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, time_str):
         vsInc_by_time = np.zeros((preds.shape[0], len(times)))
         mean_vsInc_by_time = np.zeros(len(times))
         sd_vsInc_by_time = np.zeros(len(times))
-        weighted_vsInc_by_time = np.zeros((preds.shape[0], len(times)))
-        mean_weighted_vsInc_by_time = np.zeros(len(times))
-        sd_weighted_vsInc_by_time = np.zeros(len(times))
+        weighted_vsInc_claimsize_by_time = np.zeros((preds.shape[0], len(times)))
+        mean_weighted_vsInc_claimsize_by_time = np.zeros(len(times))
+        sd_weighted_vsInc_claimsize_by_time = np.zeros(len(times))
+        weighted_vsInc_ocl_by_time = np.zeros((preds.shape[0], len(times)))
+        mean_weighted_vsInc_ocl_by_time = np.zeros(len(times))
+        sd_weighted_vsInc_ocl_by_time = np.zeros(len(times))
 
     else:
         raise ValueError('Invalid dimensions for preds')
@@ -1281,6 +1346,7 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, time_str):
         indicator = index_data[time_str] == time
         actuals_by_time[index] = np.sum(actuals[indicator])
         incurreds_by_time[index] = np.sum(incurreds[indicator])
+        ocls_by_time[index] = np.sum(ocls[indicator])
 
         if preds.ndim == 1:
 
@@ -1289,9 +1355,14 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, time_str):
                                             preds[indicator], 
                                             incurreds[indicator])
             
-            weighted_vsInc_by_time[index] = get_weighted_vsInc(actuals[indicator], 
+            weighted_vsInc_claimsize_by_time[index] = get_weighted_vsInc_claimsize(actuals[indicator], 
                                                             preds[indicator], 
                                                             incurreds[indicator])
+            
+            weighted_vsInc_ocl_by_time[index] = get_weighted_vsInc_ocl(actuals[indicator], 
+                                                            preds[indicator], 
+                                                            incurreds[indicator], 
+                                                            ocls[indicator])
             
         elif preds.ndim == 2:
             
@@ -1307,13 +1378,22 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, time_str):
             mean_vsInc_by_time[index] = np.mean(vsInc_by_time[:, index], axis=0)
             sd_vsInc_by_time[index] = np.std(vsInc_by_time[:, index], axis=0)
 
-            weighted_vsInc_by_time[:, index] = np.array([get_weighted_vsInc(actuals[indicator], 
+            weighted_vsInc_claimsize_by_time[:, index] = np.array([get_weighted_vsInc_claimsize(actuals[indicator], 
                                                                 preds[i, indicator], 
                                                                 incurreds[indicator]) 
                                              for i in range(preds.shape[0])])
             
-            mean_weighted_vsInc_by_time[index] = np.mean(weighted_vsInc_by_time[:, index], axis=0)
-            sd_weighted_vsInc_by_time[index] = np.std(weighted_vsInc_by_time[:, index], axis=0)
+            mean_weighted_vsInc_claimsize_by_time[index] = np.mean(weighted_vsInc_claimsize_by_time[:, index], axis=0)
+            sd_weighted_vsInc_claimsize_by_time[index] = np.std(weighted_vsInc_claimsize_by_time[:, index], axis=0)
+
+            weighted_vsInc_ocl_by_time[:, index] = np.array([get_weighted_vsInc_ocl(actuals[indicator], 
+                                                                preds[i, indicator], 
+                                                                incurreds[indicator], 
+                                                                ocls[indicator]) 
+                                             for i in range(preds.shape[0])])
+            
+            mean_weighted_vsInc_ocl_by_time[index] = np.mean(weighted_vsInc_ocl_by_time[:, index], axis=0)
+            sd_weighted_vsInc_ocl_by_time[index] = np.std(weighted_vsInc_ocl_by_time[:, index], axis=0)
 
     if preds.ndim == 1:
         # plotting aggregate preds
@@ -1326,7 +1406,11 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, time_str):
         if time_str == 'pred_time':
             plt.xlabel('Calendar quarter')
         elif time_str == 'dev_quarter':
-            plt.xlabel('Development quarter')
+            plt.xlabel('Quarters since notification')
+        elif time_str == 'occ_quarter':
+            plt.xlabel('Accident quarter')
+        else:
+            raise ValueError('Invalid time_str')
             
         plt.show()
 
@@ -1337,19 +1421,42 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, time_str):
         if time_str == 'pred_time':
             plt.xlabel('Calendar quarter')
         elif time_str == 'dev_quarter':
-            plt.xlabel('Development quarter')
+            plt.xlabel('Quarters since notification')
+        elif time_str == 'occ_quarter':
+            plt.xlabel('Accident quarter')
+        else:
+            raise ValueError('Invalid time_str')
             
         plt.show()
 
-        # plotting weighted vsInc
-        plt.plot(times, weighted_vsInc_by_time)
-        plt.ylabel('Weighted vsInc (%)')
+        # plotting weighted vsInc by claim size
+        plt.plot(times, weighted_vsInc_claimsize_by_time)
+        plt.ylabel('Weighted vsInc (Claim Size) (%)')
 
         if time_str == 'pred_time':
             plt.xlabel('Calendar quarter')
         elif time_str == 'dev_quarter':
-            plt.xlabel('Development quarter')
+            plt.xlabel('Quarters since notification')
+        elif time_str == 'occ_quarter':
+            plt.xlabel('Accident quarter')
+        else:
+            raise ValueError('Invalid time_str')
             
+        plt.show()
+
+        # plotting weighted vsInc by ocl
+        plt.plot(times, weighted_vsInc_ocl_by_time)
+        plt.ylabel('Weighted vsInc (OCL) (%)')
+
+        if time_str == 'pred_time':
+            plt.xlabel('Calendar quarter')
+        elif time_str == 'dev_quarter':
+            plt.xlabel('Quarters since notification')
+        elif time_str == 'occ_quarter':
+            plt.xlabel('Accident quarter')
+        else:
+            raise ValueError('Invalid time_str')
+        
         plt.show()
 
     elif preds.ndim == 2:
@@ -1367,7 +1474,11 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, time_str):
         if time_str == 'pred_time':
             plt.xlabel('Calendar quarter')
         elif time_str == 'dev_quarter':
-            plt.xlabel('Development quarter')
+            plt.xlabel('Quarters since notification')
+        elif time_str == 'occ_quarter':
+            plt.xlabel('Accident quarter')
+        else:
+            raise ValueError('Invalid time_str')
             
         plt.show()
 
@@ -1382,42 +1493,71 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, time_str):
         if time_str == 'pred_time':
             plt.xlabel('Calendar quarter')
         elif time_str == 'dev_quarter':
-            plt.xlabel('Development quarter')
+            plt.xlabel('Quarters since notification')
+        elif time_str == 'occ_quarter':
+            plt.xlabel('Accident quarter')
+        else:
+            raise ValueError('Invalid time_str')
             
         plt.show()
 
-        # plotting weighted vsInc
-        plt.plot(times, mean_weighted_vsInc_by_time, label='Mean weighted vsInc')
-        plt.fill_between(times, mean_weighted_vsInc_by_time - sd_weighted_vsInc_by_time, 
-                         mean_weighted_vsInc_by_time + sd_weighted_vsInc_by_time, alpha=0.3, color='blue')
-        plt.fill_between(times, mean_weighted_vsInc_by_time - 2*sd_weighted_vsInc_by_time, 
-                         mean_weighted_vsInc_by_time + 2*sd_weighted_vsInc_by_time, alpha=0.2, color='blue')
-        plt.ylabel('Weighted vsInc (%)')
+        # plotting weighted vsInc by claim size
+        plt.plot(times, mean_weighted_vsInc_claimsize_by_time, label='Mean weighted vsInc (Claim Size)')
+        plt.fill_between(times, mean_weighted_vsInc_claimsize_by_time - sd_weighted_vsInc_claimsize_by_time, 
+                         mean_weighted_vsInc_claimsize_by_time + sd_weighted_vsInc_claimsize_by_time, alpha=0.3, color='blue')
+        plt.fill_between(times, mean_weighted_vsInc_claimsize_by_time - 2*sd_weighted_vsInc_claimsize_by_time, 
+                         mean_weighted_vsInc_claimsize_by_time + 2*sd_weighted_vsInc_claimsize_by_time, alpha=0.2, color='blue')
+        plt.ylabel('Weighted vsInc (Claim Size) (%)')
 
         if time_str == 'pred_time':
             plt.xlabel('Calendar quarter')
         elif time_str == 'dev_quarter':
-            plt.xlabel('Development quarter')
+            plt.xlabel('Quarters since notification')
+        elif time_str == 'occ_quarter':
+            plt.xlabel('Accident quarter')
+        else:
+            raise ValueError('Invalid time_str')
 
+        plt.show()
+
+        # plotting weighted vsInc by ocl
+        plt.plot(times, mean_weighted_vsInc_ocl_by_time, label='Mean weighted vsInc (OCL)')
+        plt.fill_between(times, mean_weighted_vsInc_ocl_by_time - sd_weighted_vsInc_ocl_by_time,
+                         mean_weighted_vsInc_ocl_by_time + sd_weighted_vsInc_ocl_by_time, alpha=0.3, color='blue')
+        plt.fill_between(times, mean_weighted_vsInc_ocl_by_time - 2*sd_weighted_vsInc_ocl_by_time,
+                        mean_weighted_vsInc_ocl_by_time + 2*sd_weighted_vsInc_ocl_by_time, alpha=0.2, color='blue')
+        plt.ylabel('Weighted vsInc (OCL) (%)')
+
+        if time_str == 'pred_time':
+            plt.xlabel('Calendar quarter')
+        elif time_str == 'dev_quarter':
+            plt.xlabel('Quarters since notification')
+        elif time_str == 'occ_quarter':
+            plt.xlabel('Accident quarter')
+        else:
+            raise ValueError('Invalid time_str')
+        
         plt.show()
 
     else:
         raise ValueError('Invalid dimensions for preds')
     
 
-def get_aggregates(actuals, preds, incurreds):
+def get_aggregates(actuals, preds, incurreds, ocls):
     '''Prints the sum over each claim and censor point for all claims, 
        predictions and case estimates'''
 
     aggregate_preds = np.sum(preds)
     aggregate_actual = np.sum(actuals)
     aggregate_incurred = np.sum(incurreds)
+    aggregate_ocl = np.sum(ocls)
 
     print(f'Aggregate predictions: {aggregate_preds:,.0f}')
     print(f'Aggregate actual: {aggregate_actual:,.0f}')
     print(f'Aggregate incurred: {aggregate_incurred:,.0f}')
+    print(f'Aggregate OCL: {aggregate_ocl:,.0f}')
 
-def get_small_large(actuals, preds, incurreds, test_data, small_threshold, 
+def get_small_large(actuals, preds, incurreds, ocls, test_data, small_threshold, 
                     large_threshold):
     
     '''Splits the data into small, medium and large claims based on the 
@@ -1426,6 +1566,7 @@ def get_small_large(actuals, preds, incurreds, test_data, small_threshold,
     small_actuals = actuals[actuals < small_threshold]
     small_preds = preds[actuals < small_threshold]
     small_incurreds = incurreds[actuals < small_threshold]
+    small_ocls = ocls[actuals < small_threshold]
 
     medium_actuals = actuals[(actuals > small_threshold) & 
                              (actuals < large_threshold)]
@@ -1435,10 +1576,14 @@ def get_small_large(actuals, preds, incurreds, test_data, small_threshold,
     
     medium_incurreds = incurreds[(actuals > small_threshold) & 
                                  (actuals < large_threshold)]
+    
+    medium_ocls = ocls[(actuals > small_threshold) &
+                       (actuals < large_threshold)]
 
     large_actuals = actuals[actuals >= large_threshold]
     large_preds = preds[actuals >= large_threshold]
     large_incurreds = incurreds[actuals >= large_threshold]
+    large_ocls = ocls[actuals >= large_threshold]
 
     small_data = deepcopy(test_data)
     small_data.index = test_data.index[actuals < small_threshold]
@@ -1449,9 +1594,9 @@ def get_small_large(actuals, preds, incurreds, test_data, small_threshold,
     large_data = deepcopy(test_data)
     large_data.index = test_data.index[actuals >= large_threshold]
 
-    return (small_actuals, small_preds, small_incurreds, 
-            medium_actuals, medium_preds, medium_incurreds, 
-            large_actuals, large_preds, large_incurreds,
+    return (small_actuals, small_preds, small_incurreds, small_ocls,
+            medium_actuals, medium_preds, medium_incurreds, medium_ocls,
+            large_actuals, large_preds, large_incurreds, large_ocls,
             small_data, medium_data, large_data)
 
 def get_close_far(actuals, preds, incurreds):
@@ -1533,11 +1678,12 @@ def analyse_model(model, dataset, hp_comb,
 
     # Analysing all claims at all prediction times
     print('All')
-    actuals, preds, incurreds = get_preds_actuals(model, dataset, hp_comb)
-    get_aggregates(actuals, preds, incurreds)
+    actuals, preds, incurreds, ocls = get_preds_actuals(model, dataset, hp_comb)
+    get_aggregates(actuals, preds, incurreds, ocls)
     get_losses(actuals, preds, incurreds, dataset, hp_comb)
     print(f'vsInc: {get_vsInc(actuals, preds, incurreds):.2f}%')
-    print(f'Weighted vsInc: {get_weighted_vsInc(actuals, preds, incurreds):.2f}%')
+    print(f'Weighted vsInc (Claim Size): {get_weighted_vsInc_claimsize(actuals, preds, incurreds):.2f}%')
+    print(f'Weighted vsInc (OCL): {get_weighted_vsInc_ocl(actuals, preds, incurreds, ocls):.2f}%')
     print(f'number of preds: {len(preds)}')
 
     #print(f'preds: min = {preds.min()}, mean = {preds.mean()}, max = {preds.max()}')
@@ -1549,25 +1695,32 @@ def analyse_model(model, dataset, hp_comb,
     # Analysing the latest prediction for each claim
     print('Latest')
     (latest_actuals, latest_preds, 
-     latest_incurreds, latest_data) = get_latest(dataset, actuals, 
-                                                 preds, incurreds)
+     latest_incurreds, latest_ocls, latest_data) = get_latest(dataset, actuals, 
+                                                 preds, incurreds, ocls)
     
-    get_aggregates(latest_actuals, latest_preds, latest_incurreds)
+    get_aggregates(latest_actuals, latest_preds, latest_incurreds, latest_ocls)
     get_losses(latest_actuals, latest_preds, latest_incurreds, latest_data, hp_comb)
     print(f'vsInc: {get_vsInc(latest_actuals, latest_preds, latest_incurreds):.2f}%')
 
-    weighted_vsinc = get_weighted_vsInc(latest_actuals, 
+    weighted_vsinc_claimsize = get_weighted_vsInc_claimsize(latest_actuals, 
                                         latest_preds, 
                                         latest_incurreds)
     
-    print(f'Weighted vsInc: {weighted_vsinc:.2f}%')
-
+    weighted_vsinc_ocl = get_weighted_vsInc_ocl(latest_actuals,
+                                                latest_preds,
+                                                latest_incurreds,
+                                                latest_ocls)
+    
+    print(f'Weighted vsInc (Claim Size): {weighted_vsinc_claimsize:.2f}%')
+    print(f'Weighted vsInc (OCL): {weighted_vsinc_ocl:.2f}%')
     print(f'number of preds: {len(latest_preds)}')
+
     get_heatmap(latest_actuals, latest_preds, nbins=40)
     get_close_far(latest_actuals, latest_preds, latest_incurreds)
 
-    aggregate_by_time(dataset.index, actuals, preds, incurreds, 'pred_time')
-    aggregate_by_time(dataset.index, actuals, preds, incurreds, 'dev_quarter')
+    aggregate_by_time(dataset.index, actuals, preds, incurreds, ocls, 'pred_time')
+    aggregate_by_time(dataset.index, actuals, preds, incurreds, ocls, 'dev_quarter')
+    aggregate_by_time(dataset.index, actuals, preds, incurreds, ocls, 'occ_quarter')
 
 
     # Analysing all claims by the specified development quarters
@@ -1576,42 +1729,52 @@ def analyse_model(model, dataset, hp_comb,
     for i in range(len(dev_quarters)):
         print(f'Dev Quarter {dev_quarters[i]}')
         (dev_actuals, dev_preds, 
-         dev_incurreds, dev_data) = get_dev_quarter(dataset, actuals, preds, 
-                                                    incurreds, dev_quarters[i])
+         dev_incurreds, dev_ocls, dev_data) = get_dev_quarter(dataset, actuals, preds, 
+                                                    incurreds, ocls, dev_quarters[i])
         
-        get_aggregates(dev_actuals, dev_preds, dev_incurreds)
+        get_aggregates(dev_actuals, dev_preds, dev_incurreds, dev_ocls)
         get_losses(dev_actuals, dev_preds, dev_incurreds, dev_data, hp_comb)
         print(f'vsInc: {get_vsInc(dev_actuals, dev_preds, dev_incurreds):.2f}%')
 
-        weighted_vsinc = get_weighted_vsInc(dev_actuals, 
+        weighted_vsinc_claimsize = get_weighted_vsInc_claimsize(dev_actuals, 
                                             dev_preds, 
                                             dev_incurreds)
         
-        print(f'Weighted vsInc: {weighted_vsinc:.2f}%')
+        weighted_vsinc_ocl = get_weighted_vsInc_ocl(dev_actuals,
+                                                    dev_preds,
+                                                    dev_incurreds,
+                                                    dev_ocls)
         
+        print(f'Weighted vsInc (Claim Size): {weighted_vsinc_claimsize:.2f}%')
+        print(f'Weighted vsInc (OCL): {weighted_vsinc_ocl:.2f}%')
         print(f'number of preds: {len(dev_preds)}')
         get_heatmap(dev_actuals, dev_preds, nbins=nbinss[i])
 
 
     # Analysing all claims by size
-    (small_actuals, small_preds, small_incurreds, 
-     medium_actuals, medium_preds, medium_incurreds, 
-     large_actuals, large_preds, large_incurreds, 
+    (small_actuals, small_preds, small_incurreds, small_ocls,
+     medium_actuals, medium_preds, medium_incurreds, medium_ocls,
+     large_actuals, large_preds, large_incurreds, large_ocls,
      small_data, medium_data, 
-     large_data) = get_small_large(actuals, preds, incurreds, dataset,
+     large_data) = get_small_large(actuals, preds, incurreds, ocls, dataset,
                                    small_threshold, large_threshold)
     
     print('Small')
-    get_aggregates(small_actuals, small_preds, small_incurreds)
+    get_aggregates(small_actuals, small_preds, small_incurreds, small_ocls)
     get_losses(small_actuals, small_preds, small_incurreds, small_data, hp_comb)
     print(f'vsInc: {get_vsInc(small_actuals, small_preds, small_incurreds):.2f}%')
 
-    weighted_vsinc = get_weighted_vsInc(small_actuals, 
+    weighted_vsinc_claimsize = get_weighted_vsInc_claimsize(small_actuals, 
                                         small_preds, 
                                         small_incurreds)
-
-    print(f'Weighted vsInc: {weighted_vsinc:.2f}%')
     
+    weighted_vsinc_ocl = get_weighted_vsInc_ocl(small_actuals,
+                                                small_preds,
+                                                small_incurreds,
+                                                small_ocls)
+
+    print(f'Weighted vsInc (Claim Size): {weighted_vsinc_claimsize:.2f}%')
+    print(f'Weighted vsInc (OCL): {weighted_vsinc_ocl:.2f}%')
     print(f'number of preds: {len(small_preds)}')
     get_heatmap(small_actuals, small_preds, nbins=30)
     get_close_far(small_actuals, small_preds, small_incurreds)
@@ -1619,26 +1782,40 @@ def analyse_model(model, dataset, hp_comb,
     aggregate_by_time(dataset.index.loc[dataset.index['claim_size'] < 
                                         small_threshold,], small_actuals, 
                                                            small_preds, 
-                                                           small_incurreds, 
+                                                           small_incurreds,
+                                                           small_ocls, 
                                                            'pred_time')
     
     aggregate_by_time(dataset.index.loc[dataset.index['claim_size'] < 
                                         small_threshold,], small_actuals, 
                                                            small_preds, 
                                                            small_incurreds, 
+                                                           small_ocls,
                                                            'dev_quarter')
+    
+    aggregate_by_time(dataset.index.loc[dataset.index['claim_size'] < 
+                                        small_threshold,], small_actuals, 
+                                                           small_preds, 
+                                                           small_incurreds, 
+                                                           small_ocls,
+                                                           'occ_quarter')
 
     print('Medium')
-    get_aggregates(medium_actuals, medium_preds, medium_incurreds)
+    get_aggregates(medium_actuals, medium_preds, medium_incurreds, medium_ocls)
     get_losses(medium_actuals, medium_preds, medium_incurreds, medium_data, hp_comb)
     print(f'vsInc: {get_vsInc(medium_actuals, medium_preds, medium_incurreds):.2f}%')
 
-    weighted_vsinc = get_weighted_vsInc(medium_actuals, 
+    weighted_vsinc_claimsize = get_weighted_vsInc_claimsize(medium_actuals, 
                                         medium_preds, 
                                         medium_incurreds)
-
-    print(f'Weighted vsInc: {weighted_vsinc:.2f}%')
     
+    weighted_vsinc_ocl = get_weighted_vsInc_ocl(medium_actuals,
+                                                medium_preds,
+                                                medium_incurreds,
+                                                medium_ocls)
+
+    print(f'Weighted vsInc (Claim Size): {weighted_vsinc_claimsize:.2f}%')
+    print(f'Weighted vsInc (OCL): {weighted_vsinc_ocl:.2f}%')
     print(f'number of preds: {len(medium_preds)}')
     get_heatmap(medium_actuals, medium_preds, nbins=40)
     get_close_far(medium_actuals, medium_preds, medium_incurreds)
@@ -1646,84 +1823,111 @@ def analyse_model(model, dataset, hp_comb,
     aggregate_by_time(
         dataset.index.loc[(dataset.index['claim_size'] > small_threshold) & 
                           (dataset.index['claim_size'] < large_threshold),], 
-        medium_actuals, medium_preds, medium_incurreds, 'pred_time')
+        medium_actuals, medium_preds, medium_incurreds, medium_ocls, 'pred_time')
     
     aggregate_by_time(
         dataset.index.loc[(dataset.index['claim_size'] > small_threshold) & 
                           (dataset.index['claim_size'] < large_threshold),], 
-        medium_actuals, medium_preds, medium_incurreds, 'dev_quarter')
+        medium_actuals, medium_preds, medium_incurreds, medium_ocls, 'dev_quarter')
+    
+    aggregate_by_time(
+        dataset.index.loc[(dataset.index['claim_size'] > small_threshold) & 
+                          (dataset.index['claim_size'] < large_threshold),], 
+        medium_actuals, medium_preds, medium_incurreds, medium_ocls, 'occ_quarter')
 
     print('Large')
-    get_aggregates(large_actuals, large_preds, large_incurreds)
+    get_aggregates(large_actuals, large_preds, large_incurreds, large_ocls)
     get_losses(large_actuals, large_preds, large_incurreds, large_data, hp_comb)
     print(f'vsInc: {get_vsInc(large_actuals, large_preds, large_incurreds):.2f}%')
 
-    weighted_vsinc = get_weighted_vsInc(large_actuals, 
+    weighted_vsinc_claimsize = get_weighted_vsInc_claimsize(large_actuals, 
                                         large_preds, 
                                         large_incurreds)
-
-    print(f'Weighted vsInc: {weighted_vsinc:.2f}%')
     
+    weighted_vsinc_ocl = get_weighted_vsInc_ocl(large_actuals,
+                                                large_preds,
+                                                large_incurreds,
+                                                large_ocls)
+
+    print(f'Weighted vsInc (Claim Size): {weighted_vsinc_claimsize:.2f}%')
+    print(f'Weighted vsInc (OCL): {weighted_vsinc_ocl:.2f}%')
     print(f'number of preds: {len(large_preds)}')
     get_heatmap(large_actuals, large_preds,nbins=30)
     get_close_far(large_actuals, large_preds, large_incurreds)
 
     aggregate_by_time(dataset.index[dataset.index['claim_size'] > large_threshold], 
-                      large_actuals, large_preds, large_incurreds, 'pred_time')
+                      large_actuals, large_preds, large_incurreds, large_ocls, 'pred_time')
     
     aggregate_by_time(dataset.index[dataset.index['claim_size'] > large_threshold], 
-                      large_actuals, large_preds, large_incurreds, 'dev_quarter')
+                      large_actuals, large_preds, large_incurreds, large_ocls, 'dev_quarter')
 
+    aggregate_by_time(dataset.index[dataset.index['claim_size'] > large_threshold], 
+                      large_actuals, large_preds, large_incurreds, large_ocls, 'occ_quarter')
 
     # Analysing latest predictions by ultimate size of claim
-    (small_actuals, small_preds, small_incurreds, 
-     medium_actuals, medium_preds, medium_incurreds, 
-     large_actuals, large_preds, large_incurreds, 
+    (small_actuals, small_preds, small_incurreds, small_ocls,
+     medium_actuals, medium_preds, medium_incurreds, medium_ocls,
+     large_actuals, large_preds, large_incurreds, large_ocls,
      small_data, medium_data, 
-     large_data) = get_small_large(latest_actuals, latest_preds, latest_incurreds, 
+     large_data) = get_small_large(latest_actuals, latest_preds, latest_incurreds, latest_ocls,
                                    latest_data, small_threshold, large_threshold)
     
     print('Small Latest')
-    get_aggregates(small_actuals, small_preds, small_incurreds)
+    get_aggregates(small_actuals, small_preds, small_incurreds, small_ocls,)
     get_losses(small_actuals, small_preds, small_incurreds, small_data, hp_comb)
     print(f'vsInc: {get_vsInc(small_actuals, small_preds, small_incurreds):.2f}%')
 
-    weighted_vsinc = get_weighted_vsInc(small_actuals, 
+    weighted_vsinc_claimsize = get_weighted_vsInc_claimsize(small_actuals, 
                                         small_preds, 
                                         small_incurreds)
-
-    print(f'Weighted vsInc: {weighted_vsinc:.2f}%')
     
+    weighted_vsinc_ocl = get_weighted_vsInc_ocl(small_actuals,
+                                                small_preds,
+                                                small_incurreds,
+                                                small_ocls)
+
+    print(f'Weighted vsInc (Claim Size): {weighted_vsinc_claimsize:.2f}%')
+    print(f'Weighted vsInc (OCL): {weighted_vsinc_ocl:.2f}%')
     print(f'number of preds: {len(small_preds)}')
     get_heatmap(small_actuals, small_preds, nbins=10)
     get_close_far(small_actuals, small_preds, small_incurreds)
 
     print('Medium Latest')
-    get_aggregates(medium_actuals, medium_preds, medium_incurreds)
+    get_aggregates(medium_actuals, medium_preds, medium_incurreds, medium_ocls)
     get_losses(medium_actuals, medium_preds, medium_incurreds, medium_data, hp_comb)
     print(f'vsInc: {get_vsInc(medium_actuals, medium_preds, medium_incurreds):.2f}%')
 
-    weighted_vsinc = get_weighted_vsInc(medium_actuals, 
+    weighted_vsinc_claimsize = get_weighted_vsInc_claimsize(medium_actuals, 
                                         medium_preds, 
                                         medium_incurreds)
-
-    print(f'Weighted vsInc: {weighted_vsinc:.2f}%')
     
+    weighted_vsinc_ocl = get_weighted_vsInc_ocl(medium_actuals,
+                                                medium_preds,
+                                                medium_incurreds,
+                                                medium_ocls)
+
+    print(f'Weighted vsInc (Claim Size): {weighted_vsinc_claimsize:.2f}%')
+    print(f'Weighted vsInc (OCL): {weighted_vsinc_ocl:.2f}%')
     print(f'number of preds: {len(medium_preds)}')
     get_heatmap(medium_actuals, medium_preds, nbins=30)
     get_close_far(medium_actuals, medium_preds, medium_incurreds)
 
     print('Large Latest')
-    get_aggregates(large_actuals, large_preds, large_incurreds)
+    get_aggregates(large_actuals, large_preds, large_incurreds, large_ocls)
     get_losses(large_actuals, large_preds, large_incurreds, large_data, hp_comb)
     print(f'vsInc: {get_vsInc(large_actuals, large_preds, large_incurreds):.2f}%')
 
-    weighted_vsinc = get_weighted_vsInc(large_actuals, 
+    weighted_vsinc_claimsize = get_weighted_vsInc_claimsize(large_actuals, 
                                         large_preds, 
                                         large_incurreds)
-
-    print(f'Weighted vsInc: {weighted_vsinc:.2f}%')
     
+    weighted_vsinc_ocl = get_weighted_vsInc_ocl(large_actuals,
+                                                large_preds,
+                                                large_incurreds,
+                                                large_ocls)
+
+    print(f'Weighted vsInc (Claim Size): {weighted_vsinc_claimsize:.2f}%')
+    print(f'Weighted vsInc (OCL): {weighted_vsinc_ocl:.2f}%')
     print(f'number of preds: {len(large_preds)}')
     get_heatmap(large_actuals, large_preds, nbins=10)
     get_close_far(large_actuals, large_preds, large_incurreds)
@@ -1752,6 +1956,8 @@ def cross_validate(fp_in, fp_out, hyperparameter_grid, verbose=True):
 
     best_val_loss = np.Inf
     best_val_vsInc = 0
+    best_val_weighted_vsInc_claimsize = 0
+    best_val_weighted_vsInc_ocl = 0
     best_val_uie = np.Inf
     best_hp_comb = None
     
@@ -1761,6 +1967,8 @@ def cross_validate(fp_in, fp_out, hyperparameter_grid, verbose=True):
 
         cv_loss_list = []
         cv_vsInc_list = []
+        cv_weighted_vsInc_claimsize_list = []
+        cv_weighted_vsInc_ocl_list = []
         cv_uie_list = []
 
         # Use the same seed for each hyperparameter combination so they 
@@ -1808,21 +2016,29 @@ def cross_validate(fp_in, fp_out, hyperparameter_grid, verbose=True):
         optimiser = optim.Adam(model.parameters(), lr=hp_comb['lr'])
 
         train_network(model, train_set, hp_comb, optimiser, verbose, val_set, 
-                      cv_loss_list, cv_vsInc_list, cv_uie_list)
+                      cv_loss_list, cv_vsInc_list, 
+                      cv_weighted_vsInc_claimsize_list, 
+                      cv_weighted_vsInc_ocl_list, cv_uie_list)
         
         cv_loss = np.mean(cv_loss_list)
         cv_vsInc = np.mean(cv_vsInc_list)
+        cv_weighted_vsInc_claimsize = np.mean(cv_weighted_vsInc_claimsize_list)
+        cv_weighted_vsInc_ocl = np.mean(cv_weighted_vsInc_ocl_list)
         cv_uie = np.mean(cv_uie_list)
 
         # 'best' model chosen based on val loss
         if cv_loss < best_val_loss:
             best_val_loss = cv_loss
             best_val_vsInc = cv_vsInc
+            best_val_weighted_vsInc_claimsize = cv_weighted_vsInc_claimsize
+            best_val_weighted_vsInc_ocl = cv_weighted_vsInc_ocl
             best_val_uie = cv_uie
             best_hp_comb = hp_comb
             best_weights = deepcopy(model.state_dict())
             print(f'\nnew best val_loss: {round_threshold(best_val_loss):,}, '
                   f'val_vsInc: {best_val_vsInc:.2f}%, '
+                  f'val_weighted_vsInc_claimsize: {best_val_weighted_vsInc_claimsize:.2f}%, '
+                  f'val_weighted_vsInc_ocl: {best_val_weighted_vsInc_ocl:.2f}%, '
                   f'val_uie = {best_val_uie:.2f}%\n')
         
         # appending results to dataframe
@@ -1847,6 +2063,8 @@ def cross_validate(fp_in, fp_out, hyperparameter_grid, verbose=True):
                             'dropout': hp_comb['dropout'], 
                             'loss': round_threshold(cv_loss), 
                             'vsInc': round(cv_vsInc, 2), 
+                            'weighted_vsInc_claimsize': round(cv_weighted_vsInc_claimsize, 2),
+                            'weighted_vsInc_ocl': round(cv_weighted_vsInc_ocl, 2),
                             'UIE': round(cv_uie, 2)}, index=[0])
         
         row.to_csv(fp_out, mode='a', header=False, index=False)
@@ -1855,6 +2073,8 @@ def cross_validate(fp_in, fp_out, hyperparameter_grid, verbose=True):
         print(f'\nBest hyperparameter combination: {best_hp_comb}')
         print(f'Best validation loss: {round_threshold(best_val_loss):,}')
         print(f'Best validation vsInc: {best_val_vsInc:.2f}%')
+        print(f'Best validation weighted vsInc (Claim Size): {best_val_weighted_vsInc_claimsize:.2f}%')
+        print(f'Best validation weighted vsInc (OCL): {best_val_weighted_vsInc_ocl:.2f}%')
         print(f'Best validation UIE: {best_val_uie:.2f}%')
 
     # Results for best model
@@ -1879,254 +2099,6 @@ def cross_validate(fp_in, fp_out, hyperparameter_grid, verbose=True):
     
     model.load_state_dict(best_weights)
     analyse_model(model, val_set, best_hp_comb)
-
-def final_test(fp_in, fp_out, hp_comb, iterations, verbose=True, 
-               pretrained=False):
-    
-    '''Retrains the model on the test set multiple times, producing graphical 
-       summaries for the first iteration as well as some graphical summaries 
-       of the distribution of predictions
-       
-       Args:
-         fp_in: filepath to the folder with the test indexes and sets
-         fp_out: filepath to the csv file that stores the results
-          - appends results to the csv so that multiple runs are stored in the 
-            same csv file
-         hp_comb: dictionary of hyperparameters
-         iterations: number of times to retrain the model
-         verbose: whether to print written outputs and progress to console
-         pretrained: whether to use the predictions already stored in the csv 
-                     file. Will not retrain the model if True.'''
-
-    train_set = ClaimsDataset(hp_comb['target_col'], 
-                              fp_in + 'train_index.csv', 
-                              fp_in + 'train_set.csv', 
-                              hp_comb['include_incurreds'],
-                              hp_comb['include_covariates'],
-                              hp_comb['transform_inputs'],
-                              hp_comb['model_type'])
-
-    val_set = ClaimsDataset(hp_comb['target_col'], 
-                            fp_in + 'val_index.csv', 
-                            fp_in + 'val_set.csv', 
-                            hp_comb['include_incurreds'],
-                            hp_comb['include_covariates'],
-                            hp_comb['transform_inputs'],
-                            hp_comb['model_type'])
-
-    test_set = ClaimsDataset(hp_comb['target_col'], 
-                             fp_in + 'test_index.csv', 
-                             fp_in + 'test_set.csv', 
-                             hp_comb['include_incurreds'],
-                             hp_comb['include_covariates'],
-                             hp_comb['transform_inputs'],
-                             hp_comb['model_type'])
-
-    preds_matrix = np.zeros(shape=(iterations, len(test_set.index.index)))
-    vsInc_list = np.zeros(shape=iterations)
-    weighted_vsInc_list = np.zeros(shape=iterations)
-
-    if pretrained == False:
-        for i in range(iterations):
-            print(f'Iteration {i}')
-
-            if hp_comb['model_type'] == "RNN":
-                model = ClaimsRNN(hp_comb['nHidden'], hp_comb['nLayers'], 
-                                  hp_comb['nOut'], hp_comb['type'], hp_comb['nonlinearity'], 
-                                  hp_comb['output_layer'], hp_comb['dropout'], 
-                                  hp_comb['normalisation'], hp_comb['include_incurreds'], 
-                                  hp_comb['include_covariates']).to(device)
-            
-            elif hp_comb['model_type'] == "FNN":
-                model = ClaimsFNN(hp_comb['nLayers'], hp_comb['nHidden'], 
-                                  hp_comb['dropout'], hp_comb['output_layer'],
-                                  hp_comb['normalisation'],
-                                  hp_comb['include_incurreds'], 
-                                  hp_comb['include_covariates']).to(device)
-
-            else:
-                ValueError('Invalid model type. Must be "RNN" or "FNN"')
-
-            # Apply weight initialization
-            initialise_weights(model)
-
-            optimiser = optim.Adam(model.parameters(), lr=hp_comb['lr'])
-
-            train_network(model, train_set, hp_comb, optimiser, verbose, val_set)
-            
-            if verbose:
-                print('Test:')
-            
-            actuals, preds, incurreds = get_preds_actuals(model, test_set, 
-                                                          hp_comb, verbose)
-
-            preds_matrix[i] = preds
-            preds.to_frame().T.to_csv(fp_out, mode='a', header=False, 
-                                      index=False)
-            
-            vsInc_list[i] = get_vsInc(actuals, preds, incurreds)
-            weighted_vsInc_list[i] = get_weighted_vsInc(actuals, preds, 
-                                                        incurreds)
-
-            # Produce summaries for the first iteration
-            if i == 0:
-                analyse_model(model, test_set, hp_comb)
-
-    # Skips training and uses the predictions already stored in the csv file
-    elif pretrained == True:
-        preds_matrix = pd.read_csv(fp_out, header=None).to_numpy()
-        actuals = test_set.index["claim_size"]
-        incurreds = test_set.index["latest_incurred"]
-
-        vsInc_list = np.array([get_vsInc(actuals, preds, incurreds) 
-                               for preds in preds_matrix])
-        
-        weighted_vsInc_list = np.array([get_weighted_vsInc(actuals, 
-                                                           preds, 
-                                                           incurreds) 
-                                        for preds in preds_matrix])
-
-    else:
-        raise ValueError("pretrained must be True or False")
-
-    # manually capping claim size predictions
-    # largest in one of the datasets was $6m, so setting cap at $100m
-    preds_matrix[preds_matrix > 1e8] = 1e8
-
-
-    # Assessing distribution of aggregate claims
-    aggregate_preds = preds_matrix.sum(axis=1)
-    aggregate_actuals = actuals.sum()
-    aggregate_incurreds = incurreds.sum()
-
-    val_date = 40
-
-    # finding aggregate incurred at the valuation date (calendar quarter 40)
-    preds_val = preds_matrix[:, test_set.index['pred_time'] == val_date]
-    actuals_val = actuals[test_set.index['pred_time'] == val_date]
-    #print(f'actuals_val: {actuals_val}')
-    incurreds_val = incurreds[test_set.index['pred_time'] == val_date]
-    #print(f'incurreds_val: {incurreds_val}')
-
-    aggregate_preds_val = preds_val.sum(axis=1)
-    aggregate_actuals_val = actuals_val.sum()
-    aggregate_incurreds_val = incurreds_val.sum()
-
-    # finding total paid and ocl at the valuation date
-    test_paid = test_set.set.loc[test_set.set['pred_time'] == val_date, 
-                                 ['claim_no', 'paid']].groupby(['claim_no'])['paid'].max()
-
-    #print(f'test_paid: {test_paid}')
-
-    val_date_paid = test_paid.sum()
-
-    #print(f'actual ocls: {actuals_val - test_paid.values}')
-    model_ocls_run1 = preds_val[0] - test_paid.values
-    #print(f'model ocls (1st run): {model_ocls_run1}')
-    #print(f'incurred ocls: {incurreds_val - test_paid.values}')
-
-    print(f'proportion of negative model ocls at valuation date: {np.mean((model_ocls_run1) < 0)}')
-    print(f'negative model ocls at valuation date: {(model_ocls_run1)[(model_ocls_run1) < 0]}')
-    print(f'sum of negative model ocls at valuation date: {np.sum((model_ocls_run1)[(model_ocls_run1) < 0])}')
-    print(f'sum of actual ocls from preds with negative ocl: {np.sum((actuals_val - test_paid.values)[(model_ocls_run1) < 0])}')
-    print(f'sum of all actual ocls: {np.sum(actuals_val - test_paid.values)}\n')
-
-    print(f'proportion of negative model claim sizes at valuation date: {np.mean(preds_val[0] < 0)}')
-    print(f'negative model claim sizes at valuation date: {preds_val[0][preds_val[0] < 0]}')
-    print(f'sum of negative model claim sizes at valuation date: {np.sum(preds_val[0][preds_val[0] < 0])}\n')
-
-
-    paids = test_set.set.loc[:,['claim_no', 'pred_time', 'paid']].groupby(['claim_no', 'pred_time'])['paid'].max()
-    model_ocls = preds_matrix[0] - paids
-
-    print(f"proportion of negative model OCLs: {np.mean(model_ocls < 0)}")
-    print(f'sum of negative model OCLs: {np.sum((model_ocls)[(model_ocls) < 0])}')
-    actuals_copy = actuals.copy().reset_index(drop=True)
-    paids_copy = paids.copy().reset_index(drop=True)
-    model_ocls_copy = model_ocls.copy().reset_index(drop=True)
-    print(f'sum of actual OCLs from preds with negative OCL: {np.sum((actuals_copy - paids_copy)[(model_ocls_copy) < 0])}')
-    print(f'sum of all actual OCLs: {np.sum(actuals_copy - paids_copy)}')
-
-
-    ocl_preds = aggregate_preds_val - [val_date_paid] * len(aggregate_preds_val)
-    ocl_actuals = aggregate_actuals_val - val_date_paid
-    ocl_incurreds = aggregate_incurreds_val - val_date_paid
-
-    # weighted vsInc at the valuation date
-    weighted_vsInc_list_val = np.array([get_weighted_vsInc(actuals_val, 
-                                                           preds, 
-                                                           incurreds_val)
-                                        for preds in preds_val])
-
-    # PLOTTING RESULTS ACROSS ALL WEIGHT INITIALISATIONS
-
-    # Plotting aggregate claim size by dev quarter and cal quarter (mean across all iterations)
-    aggregate_by_time(test_set.index, actuals, preds_matrix, incurreds, 'dev_quarter')
-    aggregate_by_time(test_set.index, actuals, preds_matrix, incurreds, 'pred_time')
-
-    # Histogram of aggregate claims across all prediction times
-    plt.hist(aggregate_preds, weights=(np.zeros_like(aggregate_preds) + 1. / 
-                                       aggregate_preds.size), color='thistle')
-    
-
-    plt.xlabel('Aggregate predictions')
-    plt.ylabel('Frequency')
-    plt.show()
-
-    # Histogram of distribution of vsInc accuracy
-    plt.hist(vsInc_list, weights=(np.zeros_like(vsInc_list) + 1. / 
-                                  vsInc_list.size), color='lightgreen')
-    
-    plt.xlabel('vsInc accuracy (%)')
-    plt.ylabel('Frequency')
-    plt.show()
-
-    # Histogram of distribution of weighted vsInc
-    plt.hist(weighted_vsInc_list, weights=(np.zeros_like(weighted_vsInc_list) + 
-                                           1. / weighted_vsInc_list.size), 
-                                           color='lightgreen')
-    
-    plt.xlabel('weighted vsInc (%)')
-    plt.ylabel('Frequency')
-    plt.show()
-
-    # Histogram of aggregate claims at the valuation date
-    plt.hist(aggregate_preds_val, weights=(np.zeros_like(aggregate_preds_val) + 1. / 
-                                       aggregate_preds_val.size), color='thistle')
-    
-    plt.axvline(aggregate_actuals_val, color='dodgerblue', linestyle='dashed', 
-                linewidth=2)
-    
-    plt.axvline(aggregate_incurreds_val, color='red', linestyle='dashed', 
-                linewidth=2)
-
-    plt.xlabel('Aggregate predictions at valuation date')
-    plt.ylabel('Frequency')
-    plt.show()
-
-    # Histogram of weighted vsInc at the valuation date
-    plt.hist(weighted_vsInc_list_val, 
-             weights=(np.zeros_like(weighted_vsInc_list_val) + 
-                      1. / weighted_vsInc_list_val.size), 
-             color='lightgreen')
-    
-    plt.xlabel('weighted vsInc (%) at valuation date')
-    plt.ylabel('Frequency')
-    plt.show()
-
-    # Histogram of OCL at the valuation date
-    plt.hist(ocl_preds, weights=(np.zeros_like(ocl_preds) + 1. / 
-                                       ocl_preds.size), color='thistle')
-    
-    plt.axvline(ocl_actuals, color='dodgerblue', linestyle='dashed', 
-                linewidth=2)
-    
-    plt.axvline(ocl_incurreds, color='red', linestyle='dashed', 
-                linewidth=2)
-
-    plt.xlabel('OCL at valuation date')
-    plt.ylabel('Frequency')
-    plt.show()
 
 def train_multiple_initialisations(fp_in, fp_out, hp_comb, iterations, verbose=True):
     '''Retrains the model on the test set multiple times, producing graphical 
@@ -2183,7 +2155,7 @@ def train_multiple_initialisations(fp_in, fp_out, hp_comb, iterations, verbose=T
 
         train_network(model, train_set, hp_comb, optimiser, verbose, val_set)
             
-        torch.save(model.state_dict(), fp_out + 'seed ' + fp_in.split('_')[-1][:-1] + 'run ' + i + '.pt')
+        torch.save(model.state_dict(), fp_out + 'seed ' + fp_in.split('_')[-1][:-1] + ' run ' + str(i) + '.pt')
 
 def test_multiple_initialisations(fp_in, fp_out, hp_comb, iterations, verbose=True):
     test_set = ClaimsDataset(hp_comb['target_col'], 
@@ -2196,7 +2168,8 @@ def test_multiple_initialisations(fp_in, fp_out, hp_comb, iterations, verbose=Tr
     
     preds_matrix = np.zeros(shape=(iterations, len(test_set.index.index)))
     vsInc_list = np.zeros(shape=iterations)
-    weighted_vsInc_list = np.zeros(shape=iterations)
+    weighted_vsInc_claimsize_list = np.zeros(shape=iterations)
+    weighted_vsInc_ocl_list = np.zeros(shape=iterations)
 
     for i in range(iterations):
         print(f'Iteration {i}')
@@ -2219,19 +2192,18 @@ def test_multiple_initialisations(fp_in, fp_out, hp_comb, iterations, verbose=Tr
             ValueError('Invalid model type. Must be "RNN" or "FNN"')
 
         # Load trained weights
-        model.load_state_dict(torch.load(fp_out + 'seed ' + fp_in.split('_')[-1][:-1] + 'run ' + i + '.pt'))
+        model.load_state_dict(torch.load(fp_out + 'seed ' + fp_in.split('_')[-1][:-1] + ' run ' + str(i) + '.pt'))
 
         # testing the model somehow
-        actuals, preds, incurreds = get_preds_actuals(model, test_set, 
+        actuals, preds, incurreds, ocls = get_preds_actuals(model, test_set, 
                                                           hp_comb, verbose)
 
         preds_matrix[i] = preds
-        preds.to_frame().T.to_csv(fp_out, mode='a', header=False, 
-                                    index=False)
-        
         vsInc_list[i] = get_vsInc(actuals, preds, incurreds)
-        weighted_vsInc_list[i] = get_weighted_vsInc(actuals, preds, 
+        weighted_vsInc_claimsize_list[i] = get_weighted_vsInc_claimsize(actuals, preds, 
                                                     incurreds)
+        
+        weighted_vsInc_ocl_list[i] = get_weighted_vsInc_ocl(actuals, preds, incurreds, ocls)
         
 
     # manually capping claim size predictions
@@ -2252,6 +2224,7 @@ def test_multiple_initialisations(fp_in, fp_out, hp_comb, iterations, verbose=Tr
     #print(f'actuals_val: {actuals_val}')
     incurreds_val = incurreds[test_set.index['pred_time'] == val_date]
     #print(f'incurreds_val: {incurreds_val}')
+    ocls_val = ocls[test_set.index['pred_time'] == val_date]
 
     aggregate_preds_val = preds_val.sum(axis=1)
     aggregate_actuals_val = actuals_val.sum()
@@ -2298,16 +2271,23 @@ def test_multiple_initialisations(fp_in, fp_out, hp_comb, iterations, verbose=Tr
     ocl_incurreds = aggregate_incurreds_val - val_date_paid
 
     # weighted vsInc at the valuation date
-    weighted_vsInc_list_val = np.array([get_weighted_vsInc(actuals_val, 
+    weighted_vsInc_claimsize_list_val = np.array([get_weighted_vsInc_claimsize(actuals_val, 
                                                            preds, 
                                                            incurreds_val)
+                                        for preds in preds_val])
+    
+    weighted_vsInc_ocl_list_val = np.array([get_weighted_vsInc_ocl(actuals_val,
+                                                                   preds,
+                                                                   incurreds_val,
+                                                                   ocls_val)
                                         for preds in preds_val])
 
     # PLOTTING RESULTS ACROSS ALL WEIGHT INITIALISATIONS
 
     # Plotting aggregate claim size by dev quarter and cal quarter (mean across all iterations)
-    aggregate_by_time(test_set.index, actuals, preds_matrix, incurreds, 'dev_quarter')
-    aggregate_by_time(test_set.index, actuals, preds_matrix, incurreds, 'pred_time')
+    aggregate_by_time(test_set.index, actuals, preds_matrix, incurreds, ocls, 'dev_quarter')
+    aggregate_by_time(test_set.index, actuals, preds_matrix, incurreds, ocls, 'pred_time')
+    aggregate_by_time(test_set.index, actuals, preds_matrix, incurreds, ocls, 'occ_quarter')
 
     # Histogram of aggregate claims across all prediction times
     plt.hist(aggregate_preds, weights=(np.zeros_like(aggregate_preds) + 1. / 
@@ -2326,12 +2306,21 @@ def test_multiple_initialisations(fp_in, fp_out, hp_comb, iterations, verbose=Tr
     plt.ylabel('Frequency')
     plt.show()
 
-    # Histogram of distribution of weighted vsInc
-    plt.hist(weighted_vsInc_list, weights=(np.zeros_like(weighted_vsInc_list) + 
-                                           1. / weighted_vsInc_list.size), 
+    # Histogram of distribution of weighted vsInc (Claim Size)
+    plt.hist(weighted_vsInc_claimsize_list, weights=(np.zeros_like(weighted_vsInc_claimsize_list) + 
+                                           1. / weighted_vsInc_claimsize_list.size), 
                                            color='lightgreen')
     
-    plt.xlabel('weighted vsInc (%)')
+    plt.xlabel('weighted vsInc (Claim Size) (%)')
+    plt.ylabel('Frequency')
+    plt.show()
+
+    # Histogram of distribution of weighted vsInc (OCL)
+    plt.hist(weighted_vsInc_ocl_list, weights=(np.zeros_like(weighted_vsInc_ocl_list) +
+                                             1. / weighted_vsInc_ocl_list.size),
+                                                color='lightgreen')
+    
+    plt.xlabel('weighted vsInc (OCL) (%)')
     plt.ylabel('Frequency')
     plt.show()
 
@@ -2349,13 +2338,23 @@ def test_multiple_initialisations(fp_in, fp_out, hp_comb, iterations, verbose=Tr
     plt.ylabel('Frequency')
     plt.show()
 
-    # Histogram of weighted vsInc at the valuation date
-    plt.hist(weighted_vsInc_list_val, 
-             weights=(np.zeros_like(weighted_vsInc_list_val) + 
-                      1. / weighted_vsInc_list_val.size), 
+    # Histogram of weighted vsInc (Claim Size) at the valuation date
+    plt.hist(weighted_vsInc_claimsize_list_val, 
+             weights=(np.zeros_like(weighted_vsInc_claimsize_list_val) + 
+                      1. / weighted_vsInc_claimsize_list_val.size), 
              color='lightgreen')
     
-    plt.xlabel('weighted vsInc (%) at valuation date')
+    plt.xlabel('weighted vsInc (Claim Size) (%) at valuation date')
+    plt.ylabel('Frequency')
+    plt.show()
+
+    # Histogram of weighted vsInc (OCL) at the valuation date
+    plt.hist(weighted_vsInc_ocl_list_val,
+                weights=(np.zeros_like(weighted_vsInc_ocl_list_val) +
+                            1. / weighted_vsInc_ocl_list_val.size),
+                color='lightgreen')
+    
+    plt.xlabel('weighted vsInc (OCL) (%) at valuation date')
     plt.ylabel('Frequency')
     plt.show()
 
@@ -2457,10 +2456,11 @@ def test_multiple_datasets(fp_py, fp_out, seed_base, max_iter, hp_comb):
         # load saved weights
         model.load_state_dict(torch.load(fp_out + 'seed ' + str(i + seed_base) + '.pt'))
 
-        actuals, preds, incurreds = get_preds_actuals(model, test_set, hp_comb, True)
+        actuals, preds, incurreds, ocls = get_preds_actuals(model, test_set, hp_comb, True)
             
         vsInc = get_vsInc(actuals, preds, incurreds)    
-        weighted_vsInc = get_weighted_vsInc(actuals, preds, incurreds)
+        weighted_vsInc_claimsize = get_weighted_vsInc_claimsize(actuals, preds, incurreds)
+        weighted_vsInc_ocl = get_weighted_vsInc_ocl(actuals, preds, incurreds, ocls)
 
         val_date = 40
 
@@ -2468,6 +2468,7 @@ def test_multiple_datasets(fp_py, fp_out, seed_base, max_iter, hp_comb):
         preds_val = preds[test_set.index['pred_time'] == val_date]
         actuals_val = actuals[test_set.index['pred_time'] == val_date]
         incurreds_val = incurreds[test_set.index['pred_time'] == val_date]
+        ocls_val = ocls[test_set.index['pred_time'] == val_date]
 
         aggregate_preds_val = preds_val.sum()
         aggregate_actuals_val = actuals_val.sum()
@@ -2487,17 +2488,26 @@ def test_multiple_datasets(fp_py, fp_out, seed_base, max_iter, hp_comb):
         ocl_error_incurreds = round_threshold(abs(ocl_incurreds_val - ocl_actuals_val) / ocl_actuals_val)
 
         # weighted vsInc at the valuation date
-        weighted_vsInc_val = round_threshold(get_weighted_vsInc(actuals_val, preds_val, incurreds_val))
+        weighted_vsInc_claimsize_val = round_threshold(get_weighted_vsInc_claimsize(actuals_val, preds_val, incurreds_val))
+        weighted_vsInc_ocl_val = round_threshold(get_weighted_vsInc_ocl(actuals_val, preds_val, incurreds_val, ocls_val))
+
+        # MALE and MSLE
+        MALE = MeanAbsoluteLogError()(preds, actuals)
+        MSLE = MeanSquaredLogError()(preds, actuals)
 
         results.append({'Seed': i + seed_base, 
                         'vsInc': vsInc,
-                        'weighted_vsInc': weighted_vsInc,
+                        'weighted_vsInc_claimsize': weighted_vsInc_claimsize,
+                        'weighted_vsInc_ocl': weighted_vsInc_ocl,
                         'ocl_actuals_val': ocl_actuals_val, 
                         'ocl_preds_val': ocl_preds_val, 
                         'ocl_incurreds_val': ocl_incurreds_val, 
                         'ocl_error_preds_val': ocl_error_preds, 
                         'ocl_error_incurreds_val': ocl_error_incurreds, 
-                        'weighted_vsInc_val': weighted_vsInc_val})
+                        'weighted_vsInc_claimsize_val': weighted_vsInc_claimsize_val,
+                        'weighted_vsInc_ocl_val': weighted_vsInc_ocl_val,
+                        'MALE': MALE,
+                        'MSLE': MSLE})
 
     results = pd.DataFrame(results)
     #print(results)
@@ -2510,22 +2520,41 @@ def test_multiple_datasets(fp_py, fp_out, seed_base, max_iter, hp_comb):
     plt.ylabel('Frequency')
     plt.show()
 
-    # Histogram of distribution of weighted vsInc
-    plt.hist(results['weighted_vsInc'], weights=(np.zeros_like(results['weighted_vsInc']) + 
-                                           1. / results['weighted_vsInc'].size), 
+    # Histogram of distribution of weighted vsInc (Claim Size)
+    plt.hist(results['weighted_vsInc_claimsize'], weights=(np.zeros_like(results['weighted_vsInc_claimsize']) + 
+                                           1. / results['weighted_vsInc_claimsize'].size), 
                                            color='lightgreen')
     
-    plt.xlabel('weighted vsInc (%)')
+    plt.xlabel('weighted vsInc (Claim Size) (%)')
     plt.ylabel('Frequency')
     plt.show()
 
-    # Histogram of weighted vsInc at the valuation date
-    plt.hist(results['weighted_vsInc_val'], 
-             weights=(np.zeros_like(results['weighted_vsInc_val']) + 
-                      1. / results['weighted_vsInc_val'].size), 
+    # Histogram of distribution of weighted vsInc (OCL)
+    plt.hist(results['weighted_vsInc_ocl'], weights=(np.zeros_like(results['weighted_vsInc_ocl']) +
+                                                1. / results['weighted_vsInc_ocl'].size),
+                                                color='lightgreen')
+    
+    plt.xlabel('weighted vsInc (OCL) (%)')
+    plt.ylabel('Frequency')
+    plt.show()
+
+    # Histogram of weighted vsInc (Claim Size) at the valuation date
+    plt.hist(results['weighted_vsInc_claimsize_val'], 
+             weights=(np.zeros_like(results['weighted_vsInc_claimsize_val']) + 
+                      1. / results['weighted_vsInc_claimsize_val'].size), 
              color='lightgreen')
     
-    plt.xlabel('weighted vsInc (%) at valuation date')
+    plt.xlabel('weighted vsInc (Claim Size) (%) at valuation date')
+    plt.ylabel('Frequency')
+    plt.show()
+
+    # Histogram of weighted vsInc (OCL) at the valuation date
+    plt.hist(results['weighted_vsInc_ocl_val'],
+                weights=(np.zeros_like(results['weighted_vsInc_ocl_val']) +
+                            1. / results['weighted_vsInc_ocl_val'].size),
+                color='lightgreen')
+    
+    plt.xlabel('weighted vsInc (OCL) (%) at valuation date')
     plt.ylabel('Frequency')
     plt.show()
 
@@ -2546,6 +2575,17 @@ def test_multiple_datasets(fp_py, fp_out, seed_base, max_iter, hp_comb):
     plt.xlabel('Seed')
     plt.ylabel('OCL at valuation date')
     plt.legend()
+    plt.show()
+
+    # Histogram of MALE and MSLE
+    plt.hist(results['MALE'], weights=(np.zeros_like(results['MALE']) + 1. / results['MALE'].size), color='skyblue')
+    plt.xlabel('MALE')
+    plt.ylabel('Frequency')
+    plt.show()
+
+    plt.hist(results['MSLE'], weights=(np.zeros_like(results['MSLE']) + 1. / results['MSLE'].size), color='sandybrown')
+    plt.xlabel('MSLE')
+    plt.ylabel('Frequency')
     plt.show()
 
 
