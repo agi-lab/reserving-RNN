@@ -6,7 +6,7 @@
 library(SPLICE)
 library(data.table)
 
-seed <- 20201006
+seed <- 20250101
 with_cov = TRUE
 fp <- 'C:/Users/matty/OneDrive/MCOM/Research Report/Matt Model/Datasets/R Outputs/'
 for_aggregate = FALSE
@@ -28,7 +28,8 @@ generate_dataset <- function(seed, with_cov, fp, for_aggregate) {
 
   # Claim Occurrence (Default exposure is 12k, so our frequency should be around 
   # 67% higher than default)
-  n_vector <- claim_frequency(E = 20000, freq = 0.03)
+  # for 'small' datasets we use 20k as exposure, for 'large' datasets we use 200k
+  n_vector <- claim_frequency(E = 100000, freq = 0.03)
   occurrence_times <- claim_occurrence(frequency_vector = n_vector)
   
   # Claim Size
@@ -118,9 +119,21 @@ generate_dataset <- function(seed, with_cov, fp, for_aggregate) {
                                       cumpaid = as.integer(0.5 + cumpaid))]
   
   
+  # adding accident quarter data
+  occurrence_times_per_claim <- c(occurrence_times, recursive=T)
+  occurrence_times_per_claim <- ceiling(occurrence_times_per_claim)
+  
+  
+  for (claimno in 1:test_incurred_dataset_noInf[, max(claim_no)]) {
+    test_incurred_dataset_noInf[claim_no == claimno, 
+                                acc_quarter := occurrence_times_per_claim[claimno]]
+    
+  }
+  
   write.csv(test_incurred_dataset_noInf, paste0(fp, 'data_noInf_cov_', with_cov, 
                                                 '_seed_', seed, '.csv'))
   
 }
 
 generate_dataset(seed, with_cov, fp, for_aggregate)
+
