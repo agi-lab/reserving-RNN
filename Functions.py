@@ -171,9 +171,12 @@ def create_grid(target_cols, criterions, types, output_layers,
     return hyperparameter_grid
 
 def box_plot(data, median_colour, edge_colour, fill_colour):
-    bp = plt.boxplot(data, patch_artist=True, showfliers=False)
+    data = pd.DataFrame(data)
+
+    # dataframe boxplot needed over matplotlib or seaborn to handle missing values correctly !!!
+    bp = data.boxplot(backend='matplotlib', return_type='dict', grid=False, patch_artist=True, showfliers=False)
     
-    plt.setp(bp['medians'], color=median_colour)
+    plt.setp(bp['medians'], color=median_colour, linewidth=2)
 
     for element in ['boxes', 'whiskers', 'fliers', 'means', 'caps']:
         plt.setp(bp[element], color=edge_colour)
@@ -1662,7 +1665,7 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
                             (mean_incurreds_by_time + 2*sd_incurreds_by_time) / mean_actuals_by_time, alpha=0.2, color='green')
             plt.legend(loc='upper right')
             plt.title('Aggregate claim sizes (as proportion of actual)')
-            plt.grid(axis='y', linestyle='--', alpha=0.7)
+            plt.grid(axis='both', linestyle='--', alpha=0.7)
 
             if time_str == 'pred_time':
                 plt.xlabel('Calendar quarter')
@@ -1691,7 +1694,7 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
                             (mean_incurreds_over_actuals_by_time + 2*sd_incurreds_over_actuals_by_time), alpha=0.2, color='green')
             plt.legend(loc='upper right')
             plt.title('Aggregate claim sizes (as proportion of actual) (corrected ratios)')
-            plt.grid(axis='y', linestyle='--', alpha=0.7)
+            plt.grid(axis='both', linestyle='--', alpha=0.7)
 
             if time_str == 'pred_time':
                 plt.xlabel('Calendar quarter')
@@ -1716,7 +1719,7 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
                             q3_incurreds_over_actuals_by_time, alpha=0.3, color='green')
             plt.legend(loc='upper right')
             plt.title('Aggregate claim sizes (as proportion of actual) (mean with q1-q3 bands)')
-            plt.grid(axis='y', linestyle='--', alpha=0.7)
+            plt.grid(axis='both', linestyle='--', alpha=0.7)
 
             if time_str == 'pred_time':
                 plt.xlabel('Calendar quarter')
@@ -1741,7 +1744,7 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
                             q3_incurreds_over_actuals_by_time, alpha=0.3, color='green')
             plt.legend(loc='upper right')
             plt.title('Aggregate claim sizes (as proportion of actual) (q2 with q1-q3 bands)')
-            plt.grid(axis='y', linestyle='--', alpha=0.7)
+            plt.grid(axis='both', linestyle='--', alpha=0.7)
 
             if time_str == 'pred_time':
                 plt.xlabel('Calendar quarter')
@@ -1757,11 +1760,11 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
             plt.show()
 
             # Boxplot with better colours
-            bp_preds = box_plot(preds_over_actuals_by_time, median_colour='orange', edge_colour='chocolate', fill_colour='bisque')
-            bp_incurreds = box_plot(incurreds_over_actuals_by_time, median_colour='green', edge_colour='darkgreen', fill_colour='lightgreen')
+            bp_preds = box_plot(preds_over_actuals_by_time, median_colour='red', edge_colour='chocolate', fill_colour='bisque')
+            bp_incurreds = box_plot(incurreds_over_actuals_by_time, median_colour='cyan', edge_colour='darkgreen', fill_colour='lightgreen')
             plt.plot(times, mean_actuals_by_time / mean_actuals_by_time)
             plt.legend([bp_preds["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'Incurreds'])
-            plt.grid(axis='y', linestyle='--', alpha=0.7)
+            plt.grid(axis='both', linestyle='--', alpha=0.7)
 
             ticks = [int(time) for time in times if (time % 5 == 0 and len(times) < 50) 
                      or (time % 10 == 0 and len(times) >= 50)]
@@ -1778,7 +1781,8 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
             else:
                 raise ValueError('Invalid time_str')
             
-            plt.ylabel('Predictions / Actuals')
+            plt.title('Aggregate claim sizes (as proportion of actual)')
+            plt.ylabel('Ratio')
             plt.show()
             
             # plotting weighted vsInc by claim size (q2 and q1-q3 bands)
@@ -1788,7 +1792,7 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
 
             plt.title('Weighted vsInc (Claim Size) (q2 with q1-q3 bands)')
             plt.ylabel('Weighted vsInc (Claim Size) (%)')
-            plt.grid(axis='y', linestyle='--', alpha=0.7)
+            plt.grid(axis='both', linestyle='--', alpha=0.7)
 
             if time_str == 'pred_time':
                 plt.xlabel('Calendar quarter')
@@ -1804,10 +1808,10 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
             plt.show()
 
             # boxplot of weighted vsInc by claim size
-            box_plot(weighted_vsInc_claimsize_by_time, median_colour='blue', edge_colour='darkblue', fill_colour='lightblue')
+            box_plot(weighted_vsInc_claimsize_by_time, median_colour='fuchsia', edge_colour='darkblue', fill_colour='lightblue')
             plt.title('Weighted vsInc (Claim Size)')
             plt.ylabel('Weighted vsInc (Claim Size) (%)')
-            plt.grid(axis='y', linestyle='--', alpha=0.7)
+            plt.grid(axis='both', linestyle='--', alpha=0.7)
 
             ticks = [int(time) for time in times if (time % 5 == 0 and len(times) < 50) 
                      or (time % 10 == 0 and len(times) >= 50)]
@@ -1833,7 +1837,7 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
             
             plt.title('Weighted vsInc (OCL) (q2 with q1-q3 bands)')
             plt.ylabel('Weighted vsInc (OCL) (%)')
-            plt.grid(axis='y', linestyle='--', alpha=0.7)
+            plt.grid(axis='both', linestyle='--', alpha=0.7)
 
             if time_str == 'pred_time':
                 plt.xlabel('Calendar quarter')
@@ -1849,10 +1853,10 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
             plt.show()
 
             # boxplot of weighted vsInc by ocl
-            box_plot(weighted_vsInc_ocl_by_time, median_colour='blue', edge_colour='darkblue', fill_colour='lightblue')
+            box_plot(weighted_vsInc_ocl_by_time, median_colour='fuchsia', edge_colour='darkblue', fill_colour='lightblue')
             plt.title('Weighted vsInc (OCL)')
             plt.ylabel('Weighted vsInc (OCL) (%)')
-            plt.grid(axis='y', linestyle='--', alpha=0.7)
+            plt.grid(axis='both', linestyle='--', alpha=0.7)
 
             ticks = [int(time) for time in times if (time % 5 == 0 and len(times) < 50) 
                      or (time % 10 == 0 and len(times) >= 50)]
@@ -2911,8 +2915,17 @@ def test_multiple_datasets(fp_py, fp_out, seed_base, max_iter, hp_comb):
         weighted_vsInc_ocl_val = round_threshold(get_weighted_vsInc_ocl(actuals_val, preds_val, incurreds_val, ocls_val))
 
         # MALE and MSLE
-        MALE = MeanAbsoluteLogError()(preds, actuals)
-        MSLE = MeanSquaredLogError()(preds, actuals)
+        MALE_preds = MeanAbsoluteLogError()(preds, actuals)
+        MSLE_preds = MeanSquaredLogError()(preds, actuals)
+
+        MALE_preds_val = MeanAbsoluteLogError()(preds_val, actuals_val)
+        MSLE_preds_val = MeanSquaredLogError()(preds_val, actuals_val)
+        
+        MALE_incurreds = MeanAbsoluteLogError()(incurreds, actuals)
+        MSLE_incurreds = MeanSquaredLogError()(incurreds, actuals)
+
+        MALE_incurreds_val = MeanAbsoluteLogError()(incurreds_val, actuals_val)
+        MSLE_incurreds_val = MeanSquaredLogError()(incurreds_val, actuals_val)
 
         results.append({'Seed': i + seed_base, 
                         'test_set_index': test_set.index,
@@ -2930,8 +2943,14 @@ def test_multiple_datasets(fp_py, fp_out, seed_base, max_iter, hp_comb):
                         'ocl_error_incurreds_val': ocl_error_incurreds, 
                         'weighted_vsInc_claimsize_val': weighted_vsInc_claimsize_val,
                         'weighted_vsInc_ocl_val': weighted_vsInc_ocl_val,
-                        'MALE': MALE,
-                        'MSLE': MSLE})
+                        'MALE_preds': MALE_preds,
+                        'MSLE_preds': MSLE_preds,
+                        'MALE_preds_val': MALE_preds_val,
+                        'MSLE_preds_val': MSLE_preds_val,
+                        'MALE_incurreds': MALE_incurreds,
+                        'MSLE_incurreds': MSLE_incurreds,
+                        'MALE_incurreds_val': MALE_incurreds_val,
+                        'MSLE_incurreds_val': MSLE_incurreds_val})
 
     results = pd.DataFrame(results)
     #print(results)
@@ -3033,22 +3052,41 @@ def test_multiple_datasets(fp_py, fp_out, seed_base, max_iter, hp_comb):
     plt.show()
 
     # Histogram of MALE and MSLE
-    plt.hist(results['MALE'], weights=(np.zeros_like(results['MALE']) + 1. / results['MALE'].size), color='skyblue')
+    plt.hist(results['MALE_preds'], weights=(np.zeros_like(results['MALE_preds']) + 1. / results['MALE_preds'].size), color='skyblue')
     plt.xlabel('MALE')
     plt.ylabel('Frequency')
+    plt.title('MALE across multiple datasets')
     plt.show()
 
-    plt.hist(results['MSLE'], weights=(np.zeros_like(results['MSLE']) + 1. / results['MSLE'].size), color='sandybrown')
+    plt.hist(results['MSLE_preds'], weights=(np.zeros_like(results['MSLE_preds']) + 1. / results['MSLE_preds'].size), color='sandybrown')
     plt.xlabel('MSLE')
     plt.ylabel('Frequency')
+    plt.title('MSLE across multiple datasets')
     plt.show()
 
     # Boxplots of MALE and MSLE
-    sns.boxplot(data=results['MALE'], color='skyblue')
+    sns.boxplot(data=results[['MALE_preds', 'MALE_incurreds']])
+    plt.xticks([0, 1], ['Predictions', 'Incurreds'])
+    plt.title('MALE across multiple datasets')
     plt.ylabel('MALE')
     plt.show()
 
-    sns.boxplot(data=results['MSLE'], color='sandybrown')
+    sns.boxplot(data=results[['MSLE_preds', 'MSLE_incurreds']])
+    plt.xticks([0, 1], ['Predictions', 'Incurreds'])
+    plt.title('MSLE across multiple datasets')
+    plt.ylabel('MSLE')
+    plt.show()
+
+    # Boxplots of MALE and MSLE at valuation date
+    sns.boxplot(data=results[['MALE_preds_val', 'MALE_incurreds_val']])
+    plt.xticks([0, 1], ['Predictions', 'Incurreds'])
+    plt.title('MALE at valuation date')
+    plt.ylabel('MALE')
+    plt.show()
+
+    sns.boxplot(data=results[['MSLE_preds_val', 'MSLE_incurreds_val']])
+    plt.xticks([0, 1], ['Predictions', 'Incurreds'])
+    plt.title('MSLE at valuation date')
     plt.ylabel('MSLE')
     plt.show()
 
