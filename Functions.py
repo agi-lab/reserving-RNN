@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import matplotlib.ticker as ticker
 from copy import deepcopy
 from itertools import product
 
@@ -169,6 +170,19 @@ def create_grid(target_cols, criterions, types, output_layers,
 
     return hyperparameter_grid
 
+def box_plot(data, median_colour, edge_colour, fill_colour):
+    bp = plt.boxplot(data, patch_artist=True, showfliers=False)
+    
+    plt.setp(bp['medians'], color=median_colour)
+
+    for element in ['boxes', 'whiskers', 'fliers', 'means', 'caps']:
+        plt.setp(bp[element], color=edge_colour)
+
+    for patch in bp['boxes']:
+        patch.set(facecolor=fill_colour)       
+        
+    return bp
+
 ### MODEL CLASSES #############################################################
 
 class ClaimsDataset(Dataset):
@@ -210,6 +224,7 @@ class ClaimsDataset(Dataset):
         latest_incurred = self.index['latest_incurred'][index]
         true_ocl = self.index['true_ocl'][index]
         dev_quarter = self.index['dev_quarter'][index]
+        acc_quarter = self.index['acc_quarter'][index]
 
         if self.include_covariates:
             legal_rep = self.index['Legal Representation'][index]
@@ -244,12 +259,12 @@ class ClaimsDataset(Dataset):
             if self.include_covariates:
                 return (torch.nn.functional.pad(databox.float(), (0,0,0,50-nrows)), 
                         target, claim_size, latest_incurred, true_ocl, real_index, 
-                        claim_no, pred_time, nrows, legal_rep, injury_severity, claimant_age)
+                        claim_no, pred_time, acc_quarter, nrows, legal_rep, injury_severity, claimant_age)
 
             else:
                 return (torch.nn.functional.pad(databox.float(), (0,0,0,50-nrows)), 
                         target, claim_size, latest_incurred, true_ocl, real_index, 
-                        claim_no, pred_time, nrows)
+                        claim_no, pred_time, acc_quarter, nrows)
 
         # Setting up the data to be input into an FNN model
         elif self.model_type == 'FNN':
@@ -300,7 +315,7 @@ class ClaimsDataset(Dataset):
                         real_index: {real_index}, \
                         claim_no: {claim_no}')'''
 
-                return (pred_time, dev_quarter, num_payments, mean_payments, vco_payments, max_payment, 
+                return (pred_time, dev_quarter, acc_quarter, num_payments, mean_payments, vco_payments, max_payment, 
                         num_revisions, max_revision, total_revisions, prop_upward_revisions, 
                         legal_rep, injury_severity, claimant_age,
                         target, claim_size, latest_incurred, true_ocl, real_index, 
@@ -325,7 +340,7 @@ class ClaimsDataset(Dataset):
                         real_index: {real_index}, \
                         claim_no: {claim_no}')'''
 
-                return (pred_time, dev_quarter, num_payments, mean_payments, vco_payments, max_payment, 
+                return (pred_time, dev_quarter, acc_quarter, num_payments, mean_payments, vco_payments, max_payment, 
                         num_revisions, max_revision, total_revisions, prop_upward_revisions,
                         target, claim_size, latest_incurred, true_ocl, real_index, 
                         claim_no)
@@ -348,7 +363,7 @@ class ClaimsDataset(Dataset):
                         real_index: {real_index}, \
                         claim_no: {claim_no}')'''
 
-                return (pred_time, dev_quarter, num_payments, mean_payments, vco_payments, max_payment,
+                return (pred_time, dev_quarter, acc_quarter, num_payments, mean_payments, vco_payments, max_payment,
                         legal_rep, injury_severity, claimant_age,
                         target, claim_size, latest_incurred, true_ocl, real_index, 
                         claim_no)
@@ -368,7 +383,7 @@ class ClaimsDataset(Dataset):
                         real_index: {real_index}, \
                         claim_no: {claim_no}')'''
 
-                return (pred_time, dev_quarter, num_payments, mean_payments, vco_payments, max_payment,
+                return (pred_time, dev_quarter, acc_quarter, num_payments, mean_payments, vco_payments, max_payment,
                         target, claim_size, latest_incurred, true_ocl, real_index, 
                         claim_no)
 
@@ -460,14 +475,14 @@ class ClaimsRNN(nn.Module):
             self.embedding_age = nn.Embedding(5, self.embedding_dim) # 5 possible ages, output 2 dimensions
 
             # static inputs are increased in size
-            self.fc2 = nn.Linear(2 + 2 * self.embedding_dim, self.nConcatUnits)
+            self.fc2 = nn.Linear(3 + 2 * self.embedding_dim, self.nConcatUnits)
 
             # combining RNN and static outputs
             self.fc3 = nn.Linear(2 * self.nConcatUnits, self.nConcatUnits)
 
         else:
-            # otherwise RNN outputs + 1 for pred time
-            self.fc3 = nn.Linear(self.nConcatUnits + 1, self.nConcatUnits)
+            # otherwise RNN outputs + 2 for pred time and accident quarter
+            self.fc3 = nn.Linear(self.nConcatUnits + 2, self.nConcatUnits)
 
         self.fc4 = nn.Linear(self.nConcatUnits, nOut)
 
@@ -503,10 +518,10 @@ class ClaimsRNN(nn.Module):
             out = self.batch_norm1(out)
 
         if self.include_covariates:
-            sev_embed = self.embedding_sev(x[3].long())
-            age_embed = self.embedding_age(x[4].long())
+            sev_embed = self.embedding_sev(x[4].long())
+            age_embed = self.embedding_age(x[5].long())
 
-            static_out = torch.cat((x[1], x[2], sev_embed[:, -1, :], age_embed[:, -1, :]), 1)
+            static_out = torch.cat((x[1], x[2], x[3], sev_embed[:, -1, :], age_embed[:, -1, :]), 1)
             static_out = self.fc2(static_out)
             static_out = self.relu(static_out)
 
@@ -516,7 +531,7 @@ class ClaimsRNN(nn.Module):
             out = torch.cat((out, static_out), 1)
             
         else:
-            out = torch.cat((out, x[1]), 1)
+            out = torch.cat((out, x[1], x[2]), 1)
 
         out = self.fc3(out)
         out = self.relu(out)
@@ -555,8 +570,8 @@ class ClaimsFNN(nn.Module):
         """
         super(ClaimsFNN, self).__init__()
 
-        # 2 variables for transaction times, 4 for payments, 5 for revisions, 3 for covariates
-        self.num_features = 6 + 5 * include_incurreds + 3 * include_covariates
+        # 3 variables for transaction times, 4 for payments, 5 for revisions, 3 for covariates
+        self.num_features = 7 + 5 * include_incurreds + 3 * include_covariates
         self.final_activation = final_activation
         self.normalisation = normalisation
 
@@ -656,7 +671,7 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
                 # extract batch data
                 if hp_comb['include_covariates']:
                     (datapoints, targets, claim_sizes, latest_incurreds, true_ocls,
-                    indexes, claim_nos, pred_times, nrowss, legal_reps, 
+                    indexes, claim_nos, pred_times, acc_quarters, nrowss, legal_reps, 
                     injury_severities, claimant_ages) = batch
 
                     legal_reps = legal_reps.unsqueeze(1).to(device).float()
@@ -665,7 +680,7 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
                     
                 else:
                     (datapoints, targets, claim_sizes, latest_incurreds, 
-                    true_ocls, indexes, claim_nos, pred_times, nrowss) = batch
+                    true_ocls, indexes, claim_nos, pred_times, acc_quarters, nrowss) = batch
                     
                 datapoints = datapoints.to(device).float()
                 targets = targets.to(device).float()
@@ -673,21 +688,22 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
                 latest_incurreds = latest_incurreds.to(device).float()
                 true_ocls = true_ocls.to(device).float()
                 pred_times = pred_times.unsqueeze(1).to(device).float()
+                acc_quarters = acc_quarters.unsqueeze(1).to(device).float()
 
                 packed = pack_padded_sequence(datapoints, nrowss, 
                                             enforce_sorted=False, 
                                             batch_first=True)
 
                 if hp_comb['include_covariates']:
-                    packed_extra = (packed, pred_times, legal_reps, 
+                    packed_extra = (packed, pred_times, acc_quarters, legal_reps, 
                                     injury_severities, claimant_ages)
 
                 else:
-                    packed_extra = (packed, pred_times)  
+                    packed_extra = (packed, pred_times, acc_quarters)  
 
             elif hp_comb['model_type'] == 'FNN':
                 if hp_comb['include_incurreds'] and hp_comb['include_covariates']:
-                    (pred_times, dev_quarters, num_payments, mean_payments, 
+                    (pred_times, dev_quarters, acc_quarters, num_payments, mean_payments, 
                     vco_payments, max_payment, num_revisions, max_revision, 
                     total_revisions, prop_upward_revisions, legal_reps, 
                     injury_severities, claimant_ages, targets, claim_sizes, 
@@ -695,6 +711,7 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
 
                     pred_times = pred_times.to(device).float()
                     dev_quarters = dev_quarters.to(device).float()
+                    acc_quarters = acc_quarters.to(device).float()
                     num_payments = num_payments.to(device).float()
                     mean_payments = mean_payments.to(device).float()
                     vco_payments = vco_payments.to(device).float()
@@ -714,7 +731,7 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
                     #print(f'type of pred_times: {type(pred_times)}')
                     #print(f'dimension of pred_times: {pred_times.shape}')
 
-                    packed_extra = torch.stack((pred_times, dev_quarters, num_payments, mean_payments,
+                    packed_extra = torch.stack((pred_times, dev_quarters, acc_quarters, num_payments, mean_payments,
                                     vco_payments, max_payment, latest_incurreds, num_revisions, max_revision,
                                     total_revisions, prop_upward_revisions, legal_reps,
                                     injury_severities, claimant_ages), dim=1).to(device)
@@ -722,13 +739,14 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
                     #print(f'dimension of packed_extra: {packed_extra.shape}')
 
                 elif hp_comb['include_incurreds'] and not hp_comb['include_covariates']:
-                    (pred_times, dev_quarters, num_payments, mean_payments, 
+                    (pred_times, dev_quarters, acc_quarters, num_payments, mean_payments, 
                     vco_payments, max_payment, num_revisions, max_revision, 
                     total_revisions, prop_upward_revisions, targets, claim_sizes, 
                     latest_incurreds, true_ocls, indexes, claim_nos) = batch
 
                     pred_times = pred_times.to(device).float()
                     dev_quarters = dev_quarters.to(device).float()
+                    acc_quarters = acc_quarters.to(device).float()
                     num_payments = num_payments.to(device).float()
                     mean_payments = mean_payments.to(device).float()
                     vco_payments = vco_payments.to(device).float()
@@ -742,18 +760,19 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
                     latest_incurreds = latest_incurreds.to(device).float()
                     true_ocls = true_ocls.to(device).float()
 
-                    packed_extra = torch.stack((pred_times, dev_quarters, num_payments, mean_payments,
+                    packed_extra = torch.stack((pred_times, dev_quarters, acc_quarters, num_payments, mean_payments,
                                     vco_payments, max_payment, latest_incurreds, num_revisions, max_revision,
                                     total_revisions, prop_upward_revisions), dim=1).to(device)
 
                 elif not hp_comb['include_incurreds'] and hp_comb['include_covariates']:
-                    (pred_times, dev_quarters, num_payments, mean_payments, 
+                    (pred_times, dev_quarters, acc_quarters, num_payments, mean_payments, 
                     vco_payments, max_payment, legal_reps, injury_severities, 
                     claimant_ages, targets, claim_sizes, latest_incurreds, 
                     true_ocls, indexes, claim_nos) = batch
 
                     pred_times = pred_times.to(device).float()
                     dev_quarters = dev_quarters.to(device).float()
+                    acc_quarters = acc_quarters.to(device).float()
                     num_payments = num_payments.to(device).float()
                     mean_payments = mean_payments.to(device).float()
                     vco_payments = vco_payments.to(device).float()
@@ -766,17 +785,18 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
                     latest_incurreds = latest_incurreds.to(device).float()
                     true_ocls = true_ocls.to(device).float()
 
-                    packed_extra = torch.stack((pred_times, dev_quarters, num_payments, mean_payments,
+                    packed_extra = torch.stack((pred_times, dev_quarters, acc_quarters, num_payments, mean_payments,
                                     vco_payments, max_payment, legal_reps, injury_severities, 
                                     claimant_ages), dim=1).to(device)
 
                 else:
-                    (pred_times, dev_quarters, num_payments, mean_payments, 
+                    (pred_times, dev_quarters, acc_quarters, num_payments, mean_payments, 
                     vco_payments, max_payment, targets, claim_sizes, latest_incurreds, 
                     true_ocls, indexes, claim_nos) = batch
 
                     pred_times = pred_times.to(device).float()
                     dev_quarters = dev_quarters.to(device).float()
+                    acc_quarters = acc_quarters.to(device).float()
                     num_payments = num_payments.to(device).float()
                     mean_payments = mean_payments.to(device).float()
                     vco_payments = vco_payments.to(device).float()
@@ -786,8 +806,9 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
                     latest_incurreds = latest_incurreds.to(device).float()
                     true_ocls = true_ocls.to(device).float()
 
-                    packed_extra = torch.stack((pred_times, dev_quarters, num_payments, mean_payments,
-                                    vco_payments, max_payment), dim=1).to(device)
+                    packed_extra = torch.stack((pred_times, dev_quarters, acc_quarters, 
+                                                num_payments, mean_payments,
+                                                vco_payments, max_payment), dim=1).to(device)
 
             else:
                 raise ValueError("model_type must be 'RNN' or 'FNN'")
@@ -977,7 +998,7 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
 
                 if hp_comb['include_covariates']:
                     (datapoints, targets, claim_sizes, latest_incurreds, true_ocls, 
-                    indexes, claim_nos, pred_times, nrowss, legal_reps, 
+                    indexes, claim_nos, pred_times, acc_quarters, nrowss, legal_reps, 
                     injury_severities, claimant_ages) = batch
 
                     legal_reps = legal_reps.unsqueeze(1).to(device).float()
@@ -986,7 +1007,7 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
 
                 else:
                     (datapoints, targets, claim_sizes, latest_incurreds, true_ocls, 
-                    indexes, claim_nos, pred_times, nrowss) = batch
+                    indexes, claim_nos, pred_times, acc_quarters, nrowss) = batch
 
                 datapoints = datapoints.to(device).float()
                 targets = targets.to(device).float()
@@ -994,21 +1015,22 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
                 latest_incurreds = latest_incurreds.to(device).float()
                 true_ocls = true_ocls.to(device).float()
                 pred_times = pred_times.unsqueeze(1).to(device).float()
+                acc_quarters = acc_quarters.unsqueeze(1).to(device).float()
 
                 packed = pack_padded_sequence(datapoints, nrowss, 
                                             enforce_sorted=False, 
                                             batch_first=True)
 
                 if hp_comb['include_covariates']:
-                    packed_extra = (packed, pred_times, legal_reps, 
+                    packed_extra = (packed, pred_times, acc_quarters, legal_reps, 
                                     injury_severities, claimant_ages)
                     
                 else:
-                    packed_extra = (packed, pred_times)
+                    packed_extra = (packed, pred_times, acc_quarters)
 
             elif hp_comb['model_type'] == 'FNN':
                 if hp_comb['include_incurreds'] and hp_comb['include_covariates']:
-                    (pred_times, dev_quarters, num_payments, mean_payments, 
+                    (pred_times, dev_quarters, acc_quarters, num_payments, mean_payments, 
                     vco_payments, max_payment, num_revisions, max_revision, 
                     total_revisions, prop_upward_revisions, legal_reps, 
                     injury_severities, claimant_ages, targets, claim_sizes, 
@@ -1016,6 +1038,7 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
 
                     pred_times = pred_times.to(device).float()
                     dev_quarters = dev_quarters.to(device).float()
+                    acc_quarters = acc_quarters.to(device).float()
                     num_payments = num_payments.to(device).float()
                     mean_payments = mean_payments.to(device).float()
                     vco_payments = vco_payments.to(device).float()
@@ -1032,19 +1055,20 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
                     latest_incurreds = latest_incurreds.to(device).float()
                     true_ocls = true_ocls.to(device).float()
 
-                    packed_extra = torch.stack((pred_times, dev_quarters, num_payments, mean_payments,
+                    packed_extra = torch.stack((pred_times, dev_quarters, acc_quarters, num_payments, mean_payments,
                                     vco_payments, max_payment, latest_incurreds, num_revisions, max_revision,
                                     total_revisions, prop_upward_revisions, legal_reps,
                                     injury_severities, claimant_ages), dim=1).to(device)
 
                 elif hp_comb['include_incurreds'] and not hp_comb['include_covariates']:
-                    (pred_times, dev_quarters, num_payments, mean_payments, 
+                    (pred_times, dev_quarters, acc_quarters, num_payments, mean_payments, 
                     vco_payments, max_payment, num_revisions, max_revision, 
                     total_revisions, prop_upward_revisions, targets, claim_sizes,
                     latest_incurreds, true_ocls, indexes, claim_nos) = batch
 
                     pred_times = pred_times.to(device).float()
                     dev_quarters = dev_quarters.to(device).float()
+                    acc_quarters = acc_quarters.to(device).float()
                     num_payments = num_payments.to(device).float()
                     mean_payments = mean_payments.to(device).float()
                     vco_payments = vco_payments.to(device).float()
@@ -1058,18 +1082,19 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
                     latest_incurreds = latest_incurreds.to(device).float()
                     true_ocls = true_ocls.to(device).float()
 
-                    packed_extra = torch.stack((pred_times, dev_quarters, num_payments, mean_payments,
+                    packed_extra = torch.stack((pred_times, dev_quarters, acc_quarters, num_payments, mean_payments,
                                     vco_payments, max_payment, latest_incurreds, num_revisions, max_revision,
                                     total_revisions, prop_upward_revisions), dim=1).to(device)
 
                 elif not hp_comb['include_incurreds'] and hp_comb['include_covariates']:
-                    (pred_times, dev_quarters, num_payments, mean_payments, 
+                    (pred_times, dev_quarters, acc_quarters, num_payments, mean_payments, 
                     vco_payments, max_payment, legal_reps, injury_severities, 
                     claimant_ages, targets, claim_sizes, latest_incurreds, 
                     true_ocls, indexes, claim_nos) = batch
 
                     pred_times = pred_times.to(device).float()
                     dev_quarters = dev_quarters.to(device).float()
+                    acc_quarters = acc_quarters.to(device).float()
                     num_payments = num_payments.to(device).float()
                     mean_payments = mean_payments.to(device).float()
                     vco_payments = vco_payments.to(device).float()
@@ -1082,17 +1107,18 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
                     latest_incurreds = latest_incurreds.to(device).float()
                     true_ocls = true_ocls.to(device).float()
 
-                    packed_extra = torch.stack((pred_times, dev_quarters, num_payments, mean_payments,
+                    packed_extra = torch.stack((pred_times, dev_quarters, acc_quarters, num_payments, mean_payments,
                                     vco_payments, max_payment, legal_reps, injury_severities, 
                                     claimant_ages), dim=1).to(device)
                 
                 else:
-                    (pred_times, dev_quarters, num_payments, mean_payments, 
+                    (pred_times, dev_quarters, acc_quarters, num_payments, mean_payments, 
                     vco_payments, max_payment, targets, claim_sizes, latest_incurreds, 
                     true_ocls, indexes, claim_nos) = batch
 
                     pred_times = pred_times.to(device).float()
                     dev_quarters = dev_quarters.to(device).float()
+                    acc_quarters = acc_quarters.to(device).float()
                     num_payments = num_payments.to(device).float()
                     mean_payments = mean_payments.to(device).float()
                     vco_payments = vco_payments.to(device).float()
@@ -1102,8 +1128,9 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
                     latest_incurreds = latest_incurreds.to(device).float()
                     true_ocls = true_ocls.to(device).float()
 
-                    packed_extra = torch.stack((pred_times, dev_quarters, num_payments, mean_payments,
-                                    vco_payments, max_payment), dim=1).to(device)
+                    packed_extra = torch.stack((pred_times, dev_quarters, acc_quarters, 
+                                                num_payments, mean_payments,
+                                                vco_payments, max_payment), dim=1).to(device)
 
             else:
                 raise ValueError("model_type must be 'RNN' or 'FNN'")
@@ -1318,7 +1345,8 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
        
        time_str should be either 'pred_time' (for calendar quarter results), 
        'dev_quarter' for 'development' quarter results (i.e. time since notification, not since occurrence),
-       or 'occ_quarter' for occurrence quarter results'''
+       'acc_quarter' for accident quarter results,
+       or 'rept_quarter' for reported quarter results'''
 
     # 1 dataset, 1 prediction
     if isinstance(preds, pd.Series):
@@ -1356,11 +1384,34 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
             incurreds_by_time = np.zeros((len(incurreds), len(times)))
             ocls_by_time = np.zeros((len(ocls), len(times)))
 
+            preds_over_actuals_by_time = np.zeros((len(preds), len(times)))
+            incurreds_over_actuals_by_time = np.zeros((len(incurreds), len(times)))
+
             mean_actuals_by_time = np.zeros(len(times))
             mean_incurreds_by_time = np.zeros(len(times))
             sd_incurreds_by_time = np.zeros(len(times))
             mean_ocls_by_time = np.zeros(len(times))
             sd_ocls_by_time = np.zeros(len(times))
+
+            mean_preds_over_actuals_by_time = np.zeros(len(times))
+            sd_preds_over_actuals_by_time = np.zeros(len(times))
+            mean_incurreds_over_actuals_by_time = np.zeros(len(times))
+            sd_incurreds_over_actuals_by_time = np.zeros(len(times))
+
+            q1_preds_over_actuals_by_time = np.zeros(len(times))
+            q3_preds_over_actuals_by_time = np.zeros(len(times))
+            q1_incurreds_over_actuals_by_time = np.zeros(len(times))
+            q3_incurreds_over_actuals_by_time = np.zeros(len(times))
+            q2_preds_over_actuals_by_time = np.zeros(len(times))
+            q2_incurreds_over_actuals_by_time = np.zeros(len(times))
+
+            q1_weighted_vsInc_claimsize_by_time = np.zeros(len(times))
+            q3_weighted_vsInc_claimsize_by_time = np.zeros(len(times))
+            q2_weighted_vsInc_claimsize_by_time = np.zeros(len(times))
+
+            q1_weighted_vsInc_ocl_by_time = np.zeros(len(times))
+            q3_weighted_vsInc_ocl_by_time = np.zeros(len(times))
+            q2_weighted_vsInc_ocl_by_time = np.zeros(len(times))
 
         preds_by_time = np.zeros((len(preds), len(times)))
         mean_preds_by_time = np.zeros(len(times))
@@ -1449,6 +1500,9 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
                                                                     preds[i][indicator], 
                                                                     incurreds[i][indicator], 
                                                                     ocls[i][indicator])
+                    
+                    preds_over_actuals_by_time[i, index] = np.sum(preds[i][indicator]) / np.sum(actuals[i][indicator]) if np.sum(actuals[i][indicator]) > 0 else 1
+                    incurreds_over_actuals_by_time[i, index] = np.sum(incurreds[i][indicator]) / np.sum(actuals[i][indicator]) if np.sum(actuals[i][indicator]) > 0 else 1
                 
                 mean_actuals_by_time[index] = np.mean(actuals_by_time[:, index], axis=0)
 
@@ -1457,6 +1511,26 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
 
                 mean_ocls_by_time[index] = np.mean(ocls_by_time[:, index], axis=0)
                 sd_ocls_by_time[index] = np.std(ocls_by_time[:, index], axis=0)
+
+                mean_preds_over_actuals_by_time[index] = np.mean(preds_over_actuals_by_time[:, index], axis=0)
+                sd_preds_over_actuals_by_time[index] = np.std(preds_over_actuals_by_time[:, index], axis=0)
+                mean_incurreds_over_actuals_by_time[index] = np.mean(incurreds_over_actuals_by_time[:, index], axis=0)
+                sd_incurreds_over_actuals_by_time[index] = np.std(incurreds_over_actuals_by_time[:, index], axis=0)
+
+                q1_preds_over_actuals_by_time[index] = np.percentile(preds_over_actuals_by_time[:, index], 25)
+                q3_preds_over_actuals_by_time[index] = np.percentile(preds_over_actuals_by_time[:, index], 75)
+                q1_incurreds_over_actuals_by_time[index] = np.percentile(incurreds_over_actuals_by_time[:, index], 25)
+                q3_incurreds_over_actuals_by_time[index] = np.percentile(incurreds_over_actuals_by_time[:, index], 75)
+                q2_preds_over_actuals_by_time[index] = np.percentile(preds_over_actuals_by_time[:, index], 50)
+                q2_incurreds_over_actuals_by_time[index] = np.percentile(incurreds_over_actuals_by_time[:, index], 50)
+
+                q1_weighted_vsInc_claimsize_by_time[index] = np.percentile(weighted_vsInc_claimsize_by_time[:, index], 25)
+                q3_weighted_vsInc_claimsize_by_time[index] = np.percentile(weighted_vsInc_claimsize_by_time[:, index], 75)
+                q2_weighted_vsInc_claimsize_by_time[index] = np.percentile(weighted_vsInc_claimsize_by_time[:, index], 50)
+
+                q1_weighted_vsInc_ocl_by_time[index] = np.percentile(weighted_vsInc_ocl_by_time[:, index], 25)
+                q3_weighted_vsInc_ocl_by_time[index] = np.percentile(weighted_vsInc_ocl_by_time[:, index], 75)
+                q2_weighted_vsInc_ocl_by_time[index] = np.percentile(weighted_vsInc_ocl_by_time[:, index], 50)
 
             mean_preds_by_time[index] = np.mean(preds_by_time[:, index], axis=0)
             sd_preds_by_time[index] = np.std(preds_by_time[:, index], axis=0)
@@ -1484,8 +1558,10 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
             plt.xlabel('Calendar quarter')
         elif time_str == 'dev_quarter':
             plt.xlabel('Quarters since notification')
-        elif time_str == 'occ_quarter':
+        elif time_str == 'rept_quarter':
             plt.xlabel('Reported quarter')
+        elif time_str == 'acc_quarter':
+            plt.xlabel('Accident quarter')
         else:
             raise ValueError('Invalid time_str')
             
@@ -1499,8 +1575,10 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
             plt.xlabel('Calendar quarter')
         elif time_str == 'dev_quarter':
             plt.xlabel('Quarters since notification')
-        elif time_str == 'occ_quarter':
+        elif time_str == 'rept_quarter':
             plt.xlabel('Reported quarter')
+        elif time_str == 'acc_quarter':
+            plt.xlabel('Accident quarter')
         else:
             raise ValueError('Invalid time_str')
             
@@ -1514,8 +1592,10 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
             plt.xlabel('Calendar quarter')
         elif time_str == 'dev_quarter':
             plt.xlabel('Quarters since notification')
-        elif time_str == 'occ_quarter':
+        elif time_str == 'rept_quarter':
             plt.xlabel('Reported quarter')
+        elif time_str == 'acc_quarter':
+            plt.xlabel('Accident quarter')
         else:
             raise ValueError('Invalid time_str')
             
@@ -1529,8 +1609,10 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
             plt.xlabel('Calendar quarter')
         elif time_str == 'dev_quarter':
             plt.xlabel('Quarters since notification')
-        elif time_str == 'occ_quarter':
+        elif time_str == 'rept_quarter':
             plt.xlabel('Reported quarter')
+        elif time_str == 'acc_quarter':
+            plt.xlabel('Accident quarter')
         else:
             raise ValueError('Invalid time_str')
         
@@ -1555,8 +1637,10 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
                 plt.xlabel('Calendar quarter')
             elif time_str == 'dev_quarter':
                 plt.xlabel('Quarters since notification')
-            elif time_str == 'occ_quarter':
+            elif time_str == 'rept_quarter':
                 plt.xlabel('Reported quarter')
+            elif time_str == 'acc_quarter':
+                plt.xlabel('Accident quarter')
             else:
                 raise ValueError('Invalid time_str')
                 
@@ -1578,18 +1662,214 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
                             (mean_incurreds_by_time + 2*sd_incurreds_by_time) / mean_actuals_by_time, alpha=0.2, color='green')
             plt.legend(loc='upper right')
             plt.title('Aggregate claim sizes (as proportion of actual)')
+            plt.grid(axis='y', linestyle='--', alpha=0.7)
 
             if time_str == 'pred_time':
                 plt.xlabel('Calendar quarter')
             elif time_str == 'dev_quarter':
                 plt.xlabel('Quarters since notification')
-            elif time_str == 'occ_quarter':
+            elif time_str == 'rept_quarter':
                 plt.xlabel('Reported quarter')
+            elif time_str == 'acc_quarter':
+                plt.xlabel('Accident quarter')
             else:
                 raise ValueError('Invalid time_str')
                 
             plt.show()
 
+            # plotting aggregate preds (new version with corrected ratios)
+            plt.plot(times, mean_actuals_by_time / mean_actuals_by_time, label='Actuals')
+            plt.plot(times, mean_preds_over_actuals_by_time, label='Predictions')
+            plt.fill_between(times, (mean_preds_over_actuals_by_time - sd_preds_over_actuals_by_time), 
+                            (mean_preds_over_actuals_by_time + sd_preds_over_actuals_by_time), alpha=0.3, color='orange')
+            plt.fill_between(times, (mean_preds_over_actuals_by_time - 2*sd_preds_over_actuals_by_time), 
+                            (mean_preds_over_actuals_by_time + 2*sd_preds_over_actuals_by_time), alpha=0.2, color='orange')
+            plt.plot(times, mean_incurreds_over_actuals_by_time, label='Incurreds')
+            plt.fill_between(times, (mean_incurreds_over_actuals_by_time - sd_incurreds_over_actuals_by_time),
+                            (mean_incurreds_over_actuals_by_time + sd_incurreds_over_actuals_by_time), alpha=0.3, color='green')
+            plt.fill_between(times, (mean_incurreds_over_actuals_by_time - 2*sd_incurreds_over_actuals_by_time),
+                            (mean_incurreds_over_actuals_by_time + 2*sd_incurreds_over_actuals_by_time), alpha=0.2, color='green')
+            plt.legend(loc='upper right')
+            plt.title('Aggregate claim sizes (as proportion of actual) (corrected ratios)')
+            plt.grid(axis='y', linestyle='--', alpha=0.7)
+
+            if time_str == 'pred_time':
+                plt.xlabel('Calendar quarter')
+            elif time_str == 'dev_quarter':
+                plt.xlabel('Quarters since notification')
+            elif time_str == 'rept_quarter':
+                plt.xlabel('Reported quarter')
+            elif time_str == 'acc_quarter':
+                plt.xlabel('Accident quarter')
+            else:
+                raise ValueError('Invalid time_str')
+                
+            plt.show()
+
+            # Plotting aggregate preds (now with q1-q3 bands)
+            plt.plot(times, mean_actuals_by_time / mean_actuals_by_time, label='Actuals')
+            plt.plot(times, mean_preds_over_actuals_by_time, label='Predictions')
+            plt.fill_between(times, q1_preds_over_actuals_by_time, 
+                            q3_preds_over_actuals_by_time, alpha=0.3, color='orange')
+            plt.plot(times, mean_incurreds_over_actuals_by_time, label='Incurreds')
+            plt.fill_between(times, q1_incurreds_over_actuals_by_time,
+                            q3_incurreds_over_actuals_by_time, alpha=0.3, color='green')
+            plt.legend(loc='upper right')
+            plt.title('Aggregate claim sizes (as proportion of actual) (mean with q1-q3 bands)')
+            plt.grid(axis='y', linestyle='--', alpha=0.7)
+
+            if time_str == 'pred_time':
+                plt.xlabel('Calendar quarter')
+            elif time_str == 'dev_quarter':
+                plt.xlabel('Quarters since notification')
+            elif time_str == 'rept_quarter':
+                plt.xlabel('Reported quarter')
+            elif time_str == 'acc_quarter':
+                plt.xlabel('Accident quarter')
+            else:
+                raise ValueError('Invalid time_str')
+                
+            plt.show()
+
+            # Plotting aggregate preds (now with q1-q3 bands and q2 instead of mean)
+            plt.plot(times, mean_actuals_by_time / mean_actuals_by_time, label='Actuals')
+            plt.plot(times, q2_preds_over_actuals_by_time, label='Predictions')
+            plt.fill_between(times, q1_preds_over_actuals_by_time, 
+                            q3_preds_over_actuals_by_time, alpha=0.3, color='orange')
+            plt.plot(times, q2_incurreds_over_actuals_by_time, label='Incurreds')
+            plt.fill_between(times, q1_incurreds_over_actuals_by_time,
+                            q3_incurreds_over_actuals_by_time, alpha=0.3, color='green')
+            plt.legend(loc='upper right')
+            plt.title('Aggregate claim sizes (as proportion of actual) (q2 with q1-q3 bands)')
+            plt.grid(axis='y', linestyle='--', alpha=0.7)
+
+            if time_str == 'pred_time':
+                plt.xlabel('Calendar quarter')
+            elif time_str == 'dev_quarter':
+                plt.xlabel('Quarters since notification')
+            elif time_str == 'rept_quarter':
+                plt.xlabel('Reported quarter')
+            elif time_str == 'acc_quarter':
+                plt.xlabel('Accident quarter')
+            else:
+                raise ValueError('Invalid time_str')
+                
+            plt.show()
+
+            # Boxplot with better colours
+            bp_preds = box_plot(preds_over_actuals_by_time, median_colour='orange', edge_colour='chocolate', fill_colour='bisque')
+            bp_incurreds = box_plot(incurreds_over_actuals_by_time, median_colour='green', edge_colour='darkgreen', fill_colour='lightgreen')
+            plt.plot(times, mean_actuals_by_time / mean_actuals_by_time)
+            plt.legend([bp_preds["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'Incurreds'])
+            plt.grid(axis='y', linestyle='--', alpha=0.7)
+
+            ticks = [int(time) for time in times if (time % 5 == 0 and len(times) < 50) 
+                     or (time % 10 == 0 and len(times) >= 50)]
+            plt.xticks(ticks, ticks)
+            
+            if time_str == 'pred_time':
+                plt.xlabel('Calendar quarter')
+            elif time_str == 'dev_quarter':
+                plt.xlabel('Quarters since notification')
+            elif time_str == 'rept_quarter':
+                plt.xlabel('Reported quarter')
+            elif time_str == 'acc_quarter':
+                plt.xlabel('Accident quarter')
+            else:
+                raise ValueError('Invalid time_str')
+            
+            plt.ylabel('Predictions / Actuals')
+            plt.show()
+            
+            # plotting weighted vsInc by claim size (q2 and q1-q3 bands)
+            plt.plot(times, q2_weighted_vsInc_claimsize_by_time)
+            plt.fill_between(times, q1_weighted_vsInc_claimsize_by_time, 
+                            q3_weighted_vsInc_claimsize_by_time, alpha=0.3, color='blue')
+
+            plt.title('Weighted vsInc (Claim Size) (q2 with q1-q3 bands)')
+            plt.ylabel('Weighted vsInc (Claim Size) (%)')
+            plt.grid(axis='y', linestyle='--', alpha=0.7)
+
+            if time_str == 'pred_time':
+                plt.xlabel('Calendar quarter')
+            elif time_str == 'dev_quarter':
+                plt.xlabel('Quarters since notification')
+            elif time_str == 'rept_quarter':
+                plt.xlabel('Reported quarter')
+            elif time_str == 'acc_quarter':
+                plt.xlabel('Accident quarter')
+            else:
+                raise ValueError('Invalid time_str')
+            
+            plt.show()
+
+            # boxplot of weighted vsInc by claim size
+            box_plot(weighted_vsInc_claimsize_by_time, median_colour='blue', edge_colour='darkblue', fill_colour='lightblue')
+            plt.title('Weighted vsInc (Claim Size)')
+            plt.ylabel('Weighted vsInc (Claim Size) (%)')
+            plt.grid(axis='y', linestyle='--', alpha=0.7)
+
+            ticks = [int(time) for time in times if (time % 5 == 0 and len(times) < 50) 
+                     or (time % 10 == 0 and len(times) >= 50)]
+            plt.xticks(ticks, ticks)
+            
+            if time_str == 'pred_time':
+                plt.xlabel('Calendar quarter')
+            elif time_str == 'dev_quarter':
+                plt.xlabel('Quarters since notification')
+            elif time_str == 'rept_quarter':
+                plt.xlabel('Reported quarter')
+            elif time_str == 'acc_quarter':
+                plt.xlabel('Accident quarter')
+            else:
+                raise ValueError('Invalid time_str')
+
+            plt.show()
+
+            # plotting weighted vsInc by ocl (q2 and q1-q3 bands)
+            plt.plot(times, q2_weighted_vsInc_ocl_by_time)
+            plt.fill_between(times, q1_weighted_vsInc_ocl_by_time, 
+                            q3_weighted_vsInc_ocl_by_time, alpha=0.3, color='blue')
+            
+            plt.title('Weighted vsInc (OCL) (q2 with q1-q3 bands)')
+            plt.ylabel('Weighted vsInc (OCL) (%)')
+            plt.grid(axis='y', linestyle='--', alpha=0.7)
+
+            if time_str == 'pred_time':
+                plt.xlabel('Calendar quarter')
+            elif time_str == 'dev_quarter':
+                plt.xlabel('Quarters since notification')
+            elif time_str == 'rept_quarter':
+                plt.xlabel('Reported quarter')
+            elif time_str == 'acc_quarter':
+                plt.xlabel('Accident quarter')
+            else:
+                raise ValueError('Invalid time_str')
+            
+            plt.show()
+
+            # boxplot of weighted vsInc by ocl
+            box_plot(weighted_vsInc_ocl_by_time, median_colour='blue', edge_colour='darkblue', fill_colour='lightblue')
+            plt.title('Weighted vsInc (OCL)')
+            plt.ylabel('Weighted vsInc (OCL) (%)')
+            plt.grid(axis='y', linestyle='--', alpha=0.7)
+
+            ticks = [int(time) for time in times if (time % 5 == 0 and len(times) < 50) 
+                     or (time % 10 == 0 and len(times) >= 50)]
+            plt.xticks(ticks, ticks)
+            
+            if time_str == 'pred_time':
+                plt.xlabel('Calendar quarter')
+            elif time_str == 'dev_quarter':
+                plt.xlabel('Quarters since notification')
+            elif time_str == 'rept_quarter':
+                plt.xlabel('Reported quarter')
+            elif time_str == 'acc_quarter':
+                plt.xlabel('Accident quarter')
+            else:
+                raise ValueError('Invalid time_str')
+
+            plt.show()
 
         # plotting vsInc
         plt.plot(times, mean_vsInc_by_time, label='vsInc')
@@ -1603,8 +1883,10 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
             plt.xlabel('Calendar quarter')
         elif time_str == 'dev_quarter':
             plt.xlabel('Quarters since notification')
-        elif time_str == 'occ_quarter':
+        elif time_str == 'rept_quarter':
             plt.xlabel('Reported quarter')
+        elif time_str == 'acc_quarter':
+            plt.xlabel('Accident quarter')
         else:
             raise ValueError('Invalid time_str')
             
@@ -1622,8 +1904,10 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
             plt.xlabel('Calendar quarter')
         elif time_str == 'dev_quarter':
             plt.xlabel('Quarters since notification')
-        elif time_str == 'occ_quarter':
+        elif time_str == 'rept_quarter':
             plt.xlabel('Reported quarter')
+        elif time_str == 'acc_quarter':
+            plt.xlabel('Accident quarter')
         else:
             raise ValueError('Invalid time_str')
 
@@ -1641,8 +1925,10 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
             plt.xlabel('Calendar quarter')
         elif time_str == 'dev_quarter':
             plt.xlabel('Quarters since notification')
-        elif time_str == 'occ_quarter':
+        elif time_str == 'rept_quarter':
             plt.xlabel('Reported quarter')
+        elif time_str == 'acc_quarter':
+            plt.xlabel('Accident quarter')
         else:
             raise ValueError('Invalid time_str')
         
@@ -1657,11 +1943,17 @@ def get_aggregates(actuals, preds, incurreds, ocls):
     aggregate_actual = np.sum(actuals)
     aggregate_incurred = np.sum(incurreds)
     aggregate_ocl = np.sum(ocls)
+    aggregate_payments = aggregate_actual - aggregate_ocl
+    aggregate_pred_ocl = aggregate_preds - aggregate_payments
+    aggregate_incurred_ocl = aggregate_incurred - aggregate_payments
 
-    print(f'Aggregate predictions: {aggregate_preds:,.0f}')
-    print(f'Aggregate actual: {aggregate_actual:,.0f}')
-    print(f'Aggregate incurred: {aggregate_incurred:,.0f}')
-    print(f'Aggregate OCL: {aggregate_ocl:,.0f}')
+    print(f'Aggregate predicted Claim Size: {aggregate_preds:,.0f}')
+    print(f'Aggregate actual Claim Size: {aggregate_actual:,.0f}')
+    print(f'Aggregate incurred Claim Size: {aggregate_incurred:,.0f}')
+    print(f'Aggregate payments: {aggregate_payments:,.0f}')
+    print(f'Aggregate predicted OCL: {aggregate_pred_ocl:,.0f}')
+    print(f'Aggregate actual OCL: {aggregate_ocl:,.0f}')
+    print(f'Aggregate incurred OCL: {aggregate_incurred_ocl:,.0f}')
 
 def get_small_large(actuals, preds, incurreds, ocls, test_data, small_threshold, 
                     large_threshold):
@@ -1826,7 +2118,8 @@ def analyse_model(model, dataset, hp_comb,
 
     aggregate_by_time(dataset.index, actuals, preds, incurreds, ocls, 'pred_time')
     aggregate_by_time(dataset.index, actuals, preds, incurreds, ocls, 'dev_quarter')
-    aggregate_by_time(dataset.index, actuals, preds, incurreds, ocls, 'occ_quarter')
+    aggregate_by_time(dataset.index, actuals, preds, incurreds, ocls, 'rept_quarter')
+    aggregate_by_time(dataset.index, actuals, preds, incurreds, ocls, 'acc_quarter')
 
 
     # Analysing all claims by the specified development quarters
@@ -1904,7 +2197,14 @@ def analyse_model(model, dataset, hp_comb,
                                                            small_preds, 
                                                            small_incurreds, 
                                                            small_ocls,
-                                                           'occ_quarter')
+                                                           'rept_quarter')
+    
+    aggregate_by_time(dataset.index.loc[dataset.index['claim_size'] < 
+                                        small_threshold,], small_actuals, 
+                                                           small_preds, 
+                                                           small_incurreds, 
+                                                           small_ocls,
+                                                           'acc_quarter')
 
     print('Medium')
     get_aggregates(medium_actuals, medium_preds, medium_incurreds, medium_ocls)
@@ -1939,7 +2239,12 @@ def analyse_model(model, dataset, hp_comb,
     aggregate_by_time(
         dataset.index.loc[(dataset.index['claim_size'] > small_threshold) & 
                           (dataset.index['claim_size'] < large_threshold),], 
-        medium_actuals, medium_preds, medium_incurreds, medium_ocls, 'occ_quarter')
+        medium_actuals, medium_preds, medium_incurreds, medium_ocls, 'rept_quarter')
+    
+    aggregate_by_time(
+        dataset.index.loc[(dataset.index['claim_size'] > small_threshold) & 
+                          (dataset.index['claim_size'] < large_threshold),], 
+        medium_actuals, medium_preds, medium_incurreds, medium_ocls, 'acc_quarter')
 
     print('Large')
     get_aggregates(large_actuals, large_preds, large_incurreds, large_ocls)
@@ -1968,7 +2273,10 @@ def analyse_model(model, dataset, hp_comb,
                       large_actuals, large_preds, large_incurreds, large_ocls, 'dev_quarter')
 
     aggregate_by_time(dataset.index[dataset.index['claim_size'] > large_threshold], 
-                      large_actuals, large_preds, large_incurreds, large_ocls, 'occ_quarter')
+                      large_actuals, large_preds, large_incurreds, large_ocls, 'rept_quarter')
+    
+    aggregate_by_time(dataset.index[dataset.index['claim_size'] > large_threshold], 
+                      large_actuals, large_preds, large_incurreds, large_ocls, 'acc_quarter')
 
     # Analysing latest predictions by ultimate size of claim
     (small_actuals, small_preds, small_incurreds, small_ocls,
@@ -2397,7 +2705,8 @@ def test_multiple_initialisations(fp_in, fp_out, hp_comb, iterations, verbose=Tr
     # Plotting aggregate claim size by dev quarter and cal quarter (mean across all iterations)
     aggregate_by_time(test_set.index, actuals, preds_matrix, incurreds, ocls, 'dev_quarter')
     aggregate_by_time(test_set.index, actuals, preds_matrix, incurreds, ocls, 'pred_time')
-    aggregate_by_time(test_set.index, actuals, preds_matrix, incurreds, ocls, 'occ_quarter')
+    aggregate_by_time(test_set.index, actuals, preds_matrix, incurreds, ocls, 'rept_quarter')
+    aggregate_by_time(test_set.index, actuals, preds_matrix, incurreds, ocls, 'acc_quarter')
 
     # Histogram of aggregate claims across all prediction times
     plt.hist(aggregate_preds, weights=(np.zeros_like(aggregate_preds) + 1. / 
@@ -2637,7 +2946,8 @@ def test_multiple_datasets(fp_py, fp_out, seed_base, max_iter, hp_comb):
 
     aggregate_by_time(results['test_set_index'], actuals_matrix, preds_matrix, incurreds_matrix, ocls_matrix, 'dev_quarter')
     aggregate_by_time(results['test_set_index'], actuals_matrix, preds_matrix, incurreds_matrix, ocls_matrix, 'pred_time')
-    aggregate_by_time(results['test_set_index'], actuals_matrix, preds_matrix, incurreds_matrix, ocls_matrix, 'occ_quarter')
+    aggregate_by_time(results['test_set_index'], actuals_matrix, preds_matrix, incurreds_matrix, ocls_matrix, 'rept_quarter')
+    aggregate_by_time(results['test_set_index'], actuals_matrix, preds_matrix, incurreds_matrix, ocls_matrix, 'acc_quarter')
 
     # Histogram of distribution of vsInc accuracy
     plt.hist(results['vsInc'], weights=(np.zeros_like(results['vsInc']) + 1. / 
@@ -2645,6 +2955,12 @@ def test_multiple_datasets(fp_py, fp_out, seed_base, max_iter, hp_comb):
     
     plt.xlabel('vsInc accuracy (%)')
     plt.ylabel('Frequency')
+    plt.show()
+
+    # Boxplot of vsInc accuracy
+    sns.boxplot(data=results['vsInc'], color='lightgreen')
+    plt.ylabel('vsInc accuracy (%)')
+    plt.title('vsInc accuracy across multiple datasets')
     plt.show()
 
     # Histogram of distribution of weighted vsInc (Claim Size)
@@ -2656,6 +2972,12 @@ def test_multiple_datasets(fp_py, fp_out, seed_base, max_iter, hp_comb):
     plt.ylabel('Frequency')
     plt.show()
 
+    # Boxplot of weighted vsInc (Claim Size)
+    sns.boxplot(data=results['weighted_vsInc_claimsize'], color='skyblue')
+    plt.ylabel('weighted vsInc (Claim Size) (%)')
+    plt.title('weighted vsInc (Claim Size) across multiple datasets')
+    plt.show()
+
     # Histogram of distribution of weighted vsInc (OCL)
     plt.hist(results['weighted_vsInc_ocl'], weights=(np.zeros_like(results['weighted_vsInc_ocl']) +
                                                 1. / results['weighted_vsInc_ocl'].size),
@@ -2663,6 +2985,12 @@ def test_multiple_datasets(fp_py, fp_out, seed_base, max_iter, hp_comb):
     
     plt.xlabel('weighted vsInc (OCL) (%)')
     plt.ylabel('Frequency')
+    plt.show()
+
+    # Boxplot of weighted vsInc (OCL)
+    sns.boxplot(data=results['weighted_vsInc_ocl'], color='yellow')
+    plt.ylabel('weighted vsInc (OCL) (%)')
+    plt.title('weighted vsInc (OCL) across multiple datasets')
     plt.show()
 
     # Histogram of weighted vsInc (Claim Size) at the valuation date
@@ -2675,6 +3003,12 @@ def test_multiple_datasets(fp_py, fp_out, seed_base, max_iter, hp_comb):
     plt.ylabel('Frequency')
     plt.show()
 
+    # Boxplot of weighted vsInc (Claim Size) at the valuation date
+    sns.boxplot(data=results['weighted_vsInc_claimsize_val'], color='skyblue')
+    plt.ylabel('weighted vsInc (Claim Size) (%) at valuation date')
+    plt.title('weighted vsInc (Claim Size) at valuation date')
+    plt.show()
+
     # Histogram of weighted vsInc (OCL) at the valuation date
     plt.hist(results['weighted_vsInc_ocl_val'],
                 weights=(np.zeros_like(results['weighted_vsInc_ocl_val']) +
@@ -2685,23 +3019,17 @@ def test_multiple_datasets(fp_py, fp_out, seed_base, max_iter, hp_comb):
     plt.ylabel('Frequency')
     plt.show()
 
+    # Boxplot of weighted vsInc (OCL) at the valuation date
+    sns.boxplot(data=results['weighted_vsInc_ocl_val'], color='yellow')
+    plt.ylabel('weighted vsInc (OCL) (%) at valuation date')
+    plt.title('weighted vsInc (OCL) at valuation date')
+    plt.show()
+
     # Boxplots of OCL errors at valuation date
     sns.boxplot(data=results[['ocl_error_preds_val', 'ocl_error_incurreds_val']])
     plt.xticks([0, 1], ['Predictions', 'Incurreds'])
     plt.ylabel('OCL error (%)')
     plt.title('OCL errors at valuation date')
-    plt.show()
-
-    # plot showing OCLs at valuation date
-    plt.plot(results['Seed'], results['ocl_actuals_val'], label='Actuals', linestyle='', marker='o')
-    plt.plot(results['Seed'], results['ocl_preds_val'], label='Predictions', linestyle='', marker='o')
-    plt.plot(results['Seed'], results['ocl_incurreds_val'], label='Incurreds', linestyle='', marker='o')
-
-    #plt.xticks(results['Seed'])
-    plt.ylim(0, results[['ocl_actuals_val', 'ocl_preds_val', 'ocl_incurreds_val']].max(axis=None) * 1.1)
-    plt.xlabel('Seed')
-    plt.ylabel('OCL at valuation date')
-    plt.legend()
     plt.show()
 
     # Histogram of MALE and MSLE
@@ -2714,6 +3042,16 @@ def test_multiple_datasets(fp_py, fp_out, seed_base, max_iter, hp_comb):
     plt.xlabel('MSLE')
     plt.ylabel('Frequency')
     plt.show()
+
+    # Boxplots of MALE and MSLE
+    sns.boxplot(data=results['MALE'], color='skyblue')
+    plt.ylabel('MALE')
+    plt.show()
+
+    sns.boxplot(data=results['MSLE'], color='sandybrown')
+    plt.ylabel('MSLE')
+    plt.show()
+
 
 
 def plot_claim(preds_list, data, claim_no):
