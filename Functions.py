@@ -174,7 +174,7 @@ def box_plot(data, positions, median_colour, edge_colour, fill_colour):
     data = pd.DataFrame(data)
 
     # dataframe boxplot needed over matplotlib or seaborn to handle missing values correctly !!!
-    bp = data.boxplot(backend='matplotlib', return_type='dict', grid=False, positions=positions, patch_artist=True, showfliers=False)
+    bp = data.boxplot(backend='matplotlib', return_type='dict', grid=False, positions=positions, widths=0.7, patch_artist=True, showfliers=False)
     
     plt.setp(bp['medians'], color=median_colour, linewidth=2)
 
@@ -1687,34 +1687,6 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
 
         # multiple datasets, multiple predictions
         else:
-            # plotting aggregate preds
-            plt.plot(times, mean_actuals_by_time / mean_actuals_by_time, label='Actuals')
-            plt.plot(times, mean_preds_by_time / mean_actuals_by_time, label='Predictions')
-            plt.fill_between(times, (mean_preds_by_time - sd_preds_by_time) / mean_actuals_by_time, 
-                            (mean_preds_by_time + sd_preds_by_time) / mean_actuals_by_time, alpha=0.3, color='orange')
-            plt.fill_between(times, (mean_preds_by_time - 2*sd_preds_by_time) / mean_actuals_by_time, 
-                            (mean_preds_by_time + 2*sd_preds_by_time) / mean_actuals_by_time, alpha=0.2, color='orange')
-            plt.plot(times, mean_incurreds_by_time / mean_actuals_by_time, label='Incurreds')
-            plt.fill_between(times, (mean_incurreds_by_time - sd_incurreds_by_time) / mean_actuals_by_time,
-                            (mean_incurreds_by_time + sd_incurreds_by_time) / mean_actuals_by_time, alpha=0.3, color='green')
-            plt.fill_between(times, (mean_incurreds_by_time - 2*sd_incurreds_by_time) / mean_actuals_by_time,
-                            (mean_incurreds_by_time + 2*sd_incurreds_by_time) / mean_actuals_by_time, alpha=0.2, color='green')
-            plt.legend(loc='upper right')
-            plt.title('Aggregate claim sizes (as proportion of actual)')
-            plt.grid(axis='both', linestyle='--', alpha=0.7)
-
-            if time_str == 'pred_time':
-                plt.xlabel('Calendar quarter')
-            elif time_str == 'dev_quarter':
-                plt.xlabel('Quarters since notification')
-            elif time_str == 'rept_quarter':
-                plt.xlabel('Reported quarter')
-            elif time_str == 'acc_quarter':
-                plt.xlabel('Accident quarter')
-            else:
-                raise ValueError('Invalid time_str')
-                
-            plt.show()
 
             # plotting aggregate preds (new version with corrected ratios)
             plt.plot(times, mean_actuals_by_time / mean_actuals_by_time, label='Actuals')
@@ -1730,31 +1702,6 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
                             (mean_incurreds_over_actuals_by_time + 2*sd_incurreds_over_actuals_by_time), alpha=0.2, color='green')
             plt.legend(loc='upper right')
             plt.title('Aggregate claim sizes (as proportion of actual) (corrected ratios)')
-            plt.grid(axis='both', linestyle='--', alpha=0.7)
-
-            if time_str == 'pred_time':
-                plt.xlabel('Calendar quarter')
-            elif time_str == 'dev_quarter':
-                plt.xlabel('Quarters since notification')
-            elif time_str == 'rept_quarter':
-                plt.xlabel('Reported quarter')
-            elif time_str == 'acc_quarter':
-                plt.xlabel('Accident quarter')
-            else:
-                raise ValueError('Invalid time_str')
-                
-            plt.show()
-
-            # Plotting aggregate preds (now with q1-q3 bands)
-            plt.plot(times, mean_actuals_by_time / mean_actuals_by_time, label='Actuals')
-            plt.plot(times, mean_preds_over_actuals_by_time, label='Predictions')
-            plt.fill_between(times, q1_preds_over_actuals_by_time, 
-                            q3_preds_over_actuals_by_time, alpha=0.3, color='orange')
-            plt.plot(times, mean_incurreds_over_actuals_by_time, label='Incurreds')
-            plt.fill_between(times, q1_incurreds_over_actuals_by_time,
-                            q3_incurreds_over_actuals_by_time, alpha=0.3, color='green')
-            plt.legend(loc='upper right')
-            plt.title('Aggregate claim sizes (as proportion of actual) (mean with q1-q3 bands)')
             plt.grid(axis='both', linestyle='--', alpha=0.7)
 
             if time_str == 'pred_time':
