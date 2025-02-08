@@ -61,6 +61,9 @@ def manipulate_and_split(fp_in, fp_out, fp_out_noInc):
         return data.loc[(data['claim_no'] == row['claim_no']) & 
                         (data['txn_time'] < row['c']), ['Age of Claimant']].iloc[-1]
 
+    def get_acc_quarter(row):
+        return data.loc[data['claim_no'] == row['claim_no'], ['acc_quarter']].iloc[0]
+
 
     ### Main function ###
 
@@ -94,13 +97,13 @@ def manipulate_and_split(fp_in, fp_out, fp_out_noInc):
     for claim_no in range(1, len(start_group) + 1):
         for c in range(int(start_group[claim_no]), int(end_group[claim_no])):
             dev_quarter = c - start_group[claim_no] + 1
-            occ_quarter = start_group[claim_no]
+            rept_quarter = start_group[claim_no]
             finalised_quarter = data.loc[data['claim_no'] == claim_no, 'finalised_quarter'].mean()
-            index_data_list.append([claim_no, c, dev_quarter, occ_quarter, finalised_quarter])
+            index_data_list.append([claim_no, c, dev_quarter, rept_quarter, finalised_quarter])
             
     index_data = pd.DataFrame(index_data_list, columns = ['claim_no', 'c', 
                                                         'dev_quarter', 
-                                                        'occ_quarter', 
+                                                        'rept_quarter', 
                                                         'finalised_quarter'])       
 
     # Extracting claim size, incurred and current case estimate values
@@ -111,6 +114,8 @@ def manipulate_and_split(fp_in, fp_out, fp_out_noInc):
     index_data['Legal Representation'] = index_data.apply(get_legal_rep, axis = 1)
     index_data['Injury Severity'] = index_data.apply(get_injury_sev, axis = 1)
     index_data['Age of Claimant'] = index_data.apply(get_age, axis = 1)
+
+    index_data['acc_quarter'] = index_data.apply(get_acc_quarter, axis = 1)
 
     # Finding rows in original dataset that involve payments
     payment_rows = data.loc[(data['txn_type'] == 'P') | 
@@ -155,6 +160,9 @@ def manipulate_and_split(fp_in, fp_out, fp_out_noInc):
 
     index_data['cumpaid'] = index_data['cumpaid'].fillna(0)
 
+    # adding log claim size to index data
+    index_data['log_claim_size'] = np.log(index_data['claim_size'])
+
     # adding true_ocl to index data
     index_data['true_ocl'] = index_data['claim_size'] - index_data['cumpaid']
     index_data['log_true_ocl'] = np.log(index_data['true_ocl'])
@@ -185,15 +193,21 @@ def manipulate_and_split(fp_in, fp_out, fp_out_noInc):
     index_data['Injury Severity'] = index_data['Injury Severity'] - 1
 
     ### TRAIN TEST SPLIT ##########################################################
+    val_start_quarter = 32
+    test_start_quarter = 40
 
     # Valuation date is 40
-    train_index = index_data.loc[index_data['finalised_quarter'] <= 36]
-    val_index = index_data.loc[(index_data['finalised_quarter'] > 36) & (index_data['finalised_quarter'] <= 40)]
-    test_index = index_data.loc[index_data['finalised_quarter'] > 40]
+    train_index = index_data.loc[index_data['finalised_quarter'] <= val_start_quarter]
+    val_index = index_data.loc[(index_data['finalised_quarter'] > val_start_quarter) & (index_data['finalised_quarter'] <= test_start_quarter)]
+    test_index = index_data.loc[index_data['finalised_quarter'] > test_start_quarter]
 
-    train_set = databoxes.loc[databoxes['claim_no'].isin(train_index['claim_no'])]
-    val_set = databoxes.loc[databoxes['claim_no'].isin(val_index['claim_no'])]
-    test_set = databoxes.loc[databoxes['claim_no'].isin(test_index['claim_no'])]
+    # TESTING: removing all observations in validation and test sets that occur before the final observation in the training set
+    val_index = val_index.loc[val_index['pred_time'] >= val_start_quarter]
+    test_index = test_index.loc[test_index['pred_time'] >= test_start_quarter]
+
+    train_set = databoxes.loc[databoxes['index'].isin(train_index['index'])]
+    val_set = databoxes.loc[databoxes['index'].isin(val_index['index'])]
+    test_set = databoxes.loc[databoxes['index'].isin(test_index['index'])]
 
     # creating noIncurred versions
     train_set_noInc = train_set.loc[((train_set['txn_type'] != 'Ma') | (train_set['paid'] == 0)) & (train_set['txn_type'] != 'Mi')]
@@ -212,24 +226,24 @@ def manipulate_and_split(fp_in, fp_out, fp_out_noInc):
                                 'cal_time', 'paid', 'ocl']]
 
     train_index = train_index.loc[:, ['index', 'claim_no', 'pred_time', 
-                                        'dev_quarter', 'occ_quarter', 
-                                        'finalised_quarter', 'claim_size', 
+                                        'dev_quarter', 'rept_quarter', 'acc_quarter',
+                                        'finalised_quarter', 'claim_size', 'log_claim_size',
                                         'latest_incurred', 'm', 'log_m',
                                         'true_ocl', 'log_true_ocl',
                                         'Legal Representation', 'Injury Severity',
                                         'Age of Claimant']]
 
     val_index = val_index.loc[:, ['index', 'claim_no', 'pred_time', 
-                                    'dev_quarter', 'occ_quarter', 
-                                    'finalised_quarter', 'claim_size', 
+                                    'dev_quarter', 'rept_quarter', 'acc_quarter',
+                                    'finalised_quarter', 'claim_size', 'log_claim_size',
                                     'latest_incurred', 'm', 'log_m',
                                     'true_ocl', 'log_true_ocl',
                                     'Legal Representation', 'Injury Severity',
                                     'Age of Claimant']]
 
     test_index = test_index.loc[:, ['index', 'claim_no', 'pred_time', 
-                                    'dev_quarter', 'occ_quarter', 
-                                    'finalised_quarter', 'claim_size', 
+                                    'dev_quarter', 'rept_quarter', 'acc_quarter',
+                                    'finalised_quarter', 'claim_size', 'log_claim_size',
                                     'latest_incurred', 'm', 'log_m',
                                     'true_ocl', 'log_true_ocl',
                                     'Legal Representation', 'Injury Severity',
@@ -268,16 +282,22 @@ def manipulate_and_split(fp_in, fp_out, fp_out_noInc):
 ### FILEPATHS AND FUNCTION CALLS (ADJUST THESE BEFORE RUNNING) ################
 
 # creating 1 dataset
-fp_in = 'Datasets/R Outputs/data_noInf_cov_TRUE_seed_20201006.csv'
-fp_out = 'Datasets/Python Inputs/noInf Triangular WithInc/'
-fp_out_noInc = 'Datasets/Python Inputs/noInf Triangular NoInc/'
+fp_in = 'Datasets/R Outputs/data_noInf_cov_TRUE_seed_20250101.csv'
+fp_out = 'Datasets/Python Inputs/noInf_WithInc_seed_20250101/'
+fp_out_noInc = 'Datasets/Python Inputs/noInf_NoInc_seed_20250101/'
 
+#fp_in = 'Datasets/R Outputs/data_noInf_cov_TRUE_seed_20201006.csv'
+#fp_out = 'Datasets/Python Inputs/noInf_WithInc_seed_20201006/'
+#fp_out_noInc = 'Datasets/Python Inputs/noInf_NoInc_seed_20201006/'
+
+print('file running...')
 manipulate_and_split(fp_in, fp_out, fp_out_noInc)
+print('file complete')
 
-
+'''
 # creating multiple datasets
-max_iter = 20
-seed_base = 2024
+max_iter = 10
+seed_base = 2034
 
 fp_R = 'Datasets/R Outputs/data_noInf_cov_TRUE_seed_'
 fp_py_WithInc = 'Datasets/Python Inputs/noInf_WithInc_seed_'
@@ -297,4 +317,4 @@ for i in range(1, max_iter + 1):
     manipulate_and_split(fp_in, fp_out, fp_out_noInc)
 
 print('DATA EXPORTED')
-
+'''
