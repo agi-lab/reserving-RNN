@@ -28,8 +28,8 @@ generate_dataset <- function(seed, with_cov, fp, for_aggregate) {
 
   # Claim Occurrence (Default exposure is 12k, so our frequency should be around 
   # 67% higher than default)
-  # for 'small' datasets we use 20k as exposure, for 'large' datasets we use 200k
-  n_vector <- claim_frequency(E = 100000, freq = 0.03)
+  # for 'small' datasets we use 20k as exposure, for 'large' datasets we use 100k (only using 'small' for now)
+  n_vector <- claim_frequency(E = 20000, freq = 0.03)
   occurrence_times <- claim_occurrence(frequency_vector = n_vector)
   
   # Claim Size
@@ -137,3 +137,55 @@ generate_dataset <- function(seed, with_cov, fp, for_aggregate) {
 
 generate_dataset(seed, with_cov, fp, for_aggregate)
 
+
+
+
+# much shorter and simpler alternative to above code
+for (complexity in 1:5) {
+  # 20,000 epy * 3% frequency / 4 quarters
+  test_dataset <- generate_data(n_claims_per_period = 20000 * 0.03 / 4,
+                n_periods = 40,
+                complexity = complexity,
+                random_seed = 1,
+                covariates_obj = test_covariates_obj
+                )
+  
+  occurrence_times <- test_dataset$claim_dataset$occurrence_period
+  
+  test_incurred_dataset <- data.table(test_dataset$incurred_dataset)
+  
+  covariates_features <- data.table(test_dataset$covariates_data$data)
+  
+  nrows = as.vector(table(test_incurred_dataset[, claim_no]))
+  covariates_features[, nrows := nrows]
+  
+  test_incurred_dataset <- cbind(test_incurred_dataset, 
+                                       covariates_features[rep(1:.N, nrows)])
+  
+  # remove unnecessary columns
+  test_incurred_dataset[, c("multiplier", "nrows") := NULL]
+  
+  
+  # rounding values to nearest dollar
+  # note that after rounding, it is not guaranteed for cumpaid + OCL = incurred
+  # 0.5 is included to round to the nearest integer instead of always rounding down
+  test_incurred_dataset[, ':=' (claim_size = as.integer(0.5 + claim_size), 
+                                      incurred = as.integer(0.5 + incurred), 
+                                      OCL = as.integer(0.5 + OCL), 
+                                      cumpaid = as.integer(0.5 + cumpaid))]
+  
+  
+  # adding accident quarter data
+  occurrence_times_per_claim <- c(occurrence_times, recursive=T)
+  occurrence_times_per_claim <- ceiling(occurrence_times_per_claim)
+  
+  
+  for (claimno in 1:test_incurred_dataset[, max(claim_no)]) {
+    test_incurred_dataset[claim_no == claimno, 
+                          acc_quarter := occurrence_times_per_claim[claimno]]
+    
+  }
+  
+  write.csv(test_incurred_dataset, paste0(fp, 'complexity ', complexity, '.csv'))
+  
+}
