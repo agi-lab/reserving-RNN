@@ -132,7 +132,7 @@ def initialise_weights(model):
 
 def create_grid(target_cols, criterions, types, output_layers, 
                 nOuts, epochss, nHiddens, nLayerss, patiences, batch_sizes, 
-                lrs, nonlinearitys, dropouts, normalisations, 
+                optimisers, lrs, nonlinearitys, dropouts, normalisations, 
                 include_incurredss, include_covariatess, transform_inputss, model_types):
     
     '''
@@ -143,7 +143,7 @@ def create_grid(target_cols, criterions, types, output_layers,
 
     for params in product(target_cols, criterions, types, 
                           output_layers, nOuts, epochss, nHiddens, nLayerss, 
-                          patiences, batch_sizes, lrs, nonlinearitys, 
+                          patiences, batch_sizes, optimisers, lrs, nonlinearitys, 
                           dropouts, normalisations, include_incurredss, 
                           include_covariatess, transform_inputss, model_types):
         
@@ -158,14 +158,15 @@ def create_grid(target_cols, criterions, types, output_layers,
             'nLayers': params[7],
             'patience': params[8],
             'batch_size': params[9],
-            'lr': params[10],
-            'nonlinearity': params[11],
-            'dropout': params[12],
-            'normalisation': params[13],
-            'include_incurreds': params[14],
-            'include_covariates': params[15],
-            'transform_inputs': params[16],
-            'model_type': params[17]
+            'optimiser': params[10],
+            'lr': params[11],
+            'nonlinearity': params[12],
+            'dropout': params[13],
+            'normalisation': params[14],
+            'include_incurreds': params[15],
+            'include_covariates': params[16],
+            'transform_inputs': params[17],
+            'model_type': params[18]
         })
 
     return hyperparameter_grid
@@ -260,12 +261,12 @@ class ClaimsDataset(Dataset):
 
             # Return padded data
             if self.include_covariates:
-                return (torch.nn.functional.pad(databox.float(), (0,0,0,50-nrows)), 
+                return (F.pad(databox.float(), (0,0,0,50-nrows)), 
                         target, claim_size, latest_incurred, true_ocl, real_index, 
                         claim_no, pred_time, acc_quarter, nrows, legal_rep, injury_severity, claimant_age)
 
             else:
-                return (torch.nn.functional.pad(databox.float(), (0,0,0,50-nrows)), 
+                return (F.pad(databox.float(), (0,0,0,50-nrows)), 
                         target, claim_size, latest_incurred, true_ocl, real_index, 
                         claim_no, pred_time, acc_quarter, nrows)
 
@@ -549,6 +550,9 @@ class ClaimsRNN(nn.Module):
         if self.output_layer == 'exponential':
             out = torch.exp(out)
 
+        elif self.output_layer == 'softplus':
+            out = F.softplus(out)
+
         return out
     
 
@@ -558,7 +562,7 @@ class ClaimsFNN(nn.Module):
     """
 
     def __init__(self, nLayers=2, nHidden=50, dropout = 0.2, 
-                 final_activation='exp', normalisation=True, 
+                 final_activation='exponential', normalisation=True, 
                  include_incurreds=True, include_covariates=True):
         """
         Initialises the Feedforward Neural Network.
@@ -608,8 +612,10 @@ class ClaimsFNN(nn.Module):
         Returns:
             the predicted outputs (shape: (n,))
         """
-        if self.final_activation == 'exp':
+        if self.final_activation == 'exponential':
             out = torch.exp(self.nn_output_layer(x).squeeze(-1)) # * x[:, -1].squeeze(-1)
+        elif self.final_activation == 'softplus':
+            out = F.softplus(self.nn_output_layer(x).squeeze(-1))
         elif self.final_activation == 'linear':
             out = self.nn_output_layer(x).squeeze(-1)
         else:
@@ -619,7 +625,7 @@ class ClaimsFNN(nn.Module):
 
 ### TRAINING/TESTING FUNCTIONS ################################################
 
-def train_network(model, train_data, hp_comb, optimiser, verbose=True, 
+def train_network(model, train_data, hp_comb, verbose=True, 
                   val_data=None, cv_loss_list=None, cv_vsInc_list=None, 
                   cv_weighted_vsInc_claimsize_list=None, 
                   cv_weighted_vsInc_ocl_list=None, cv_uie_list=None):
@@ -629,7 +635,6 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
         model: the model to train
         train_data: ClaimsDataset object containing training data
         hp_comb: dictionary of hyperparameters along with their values
-        optimiser: the optimiser to use
         verbose: whether to print written outputs and progress to console
         val_data: ClaimsDataset object containing validation data, 
             enables early stopping
@@ -657,6 +662,16 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
                                               batch_size=hp_comb['batch_size'], 
                                               shuffle=True, drop_last=True,
                                               num_workers=4, pin_memory=True)
+    
+    # Creation of optimiser
+    if hp_comb['optimiser'] == 'Adam':
+        optimiser = optim.Adam(model.parameters(), lr=hp_comb['lr'])
+
+    elif hp_comb['optimiser'] == 'AdamW':
+        optimiser = optim.AdamW(model.parameters(), lr=hp_comb['lr'])
+
+    else:
+        raise ValueError("optimiser must be 'Adam' or 'AdamW'. Otherwise, add new optimiser to the function.")
 
     # Train the model
     for epoch in range(hp_comb['epochs']):
@@ -856,7 +871,7 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
             loss.backward() # Calculate gradients
 
             # clip gradients
-            max_norm = 1
+            max_norm = 5
             clip_grad_norm_(model.parameters(), max_norm)
 
             optimiser.step() # Update weights
@@ -910,7 +925,9 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
                          val_uie_list=val_uie_list, verbose=verbose)
 
             # Early stopping
-            if val_loss_list[-1] < best_val_loss:
+            min_delta = 0.0001
+
+            if val_loss_list[-1] < best_val_loss - min_delta:
                 best_val_loss = val_loss_list[-1]
                 best_val_vsInc = val_vsInc_list[-1].item()
                 best_val_weighted_vsInc_claimsize = val_weighted_vsInc_claimsize_list[-1].item()
@@ -2484,9 +2501,9 @@ def cross_validate(fp_in, fp_out, hyperparameter_grid, verbose=True):
         # Apply weight initialization
         initialise_weights(model)
         
-        optimiser = optim.Adam(model.parameters(), lr=hp_comb['lr'])
+        
 
-        train_network(model, train_set, hp_comb, optimiser, verbose, val_set, 
+        train_network(model, train_set, hp_comb, verbose, val_set, 
                       cv_loss_list, cv_vsInc_list, 
                       cv_weighted_vsInc_claimsize_list, 
                       cv_weighted_vsInc_ocl_list, cv_uie_list)
@@ -2497,8 +2514,9 @@ def cross_validate(fp_in, fp_out, hyperparameter_grid, verbose=True):
         cv_weighted_vsInc_ocl = np.mean(cv_weighted_vsInc_ocl_list)
         cv_uie = np.mean(cv_uie_list)
 
-        # 'best' model chosen based on val loss
-        if cv_loss < best_val_loss:
+        # 'best' model chosen based on validation vsInc (OCL)
+        # used to be based on val loss, but vsInc is a better reflection of what we want our model to focus on
+        if cv_weighted_vsInc_ocl > best_val_weighted_vsInc_ocl:
             best_val_loss = cv_loss
             best_val_vsInc = cv_vsInc
             best_val_weighted_vsInc_claimsize = cv_weighted_vsInc_claimsize
@@ -2529,6 +2547,7 @@ def cross_validate(fp_in, fp_out, hyperparameter_grid, verbose=True):
                             'epochs': hp_comb['epochs'], 
                             'patience': hp_comb['patience'], 
                             'batch_size': hp_comb['batch_size'], 
+                            'optimiser': hp_comb['optimiser'],
                             'learning_rate': hp_comb['lr'], 
                             'normalisation': hp_comb['normalisation'], 
                             'dropout': hp_comb['dropout'], 
@@ -2622,9 +2641,7 @@ def train_multiple_initialisations(fp_in, fp_out, hp_comb, iterations, verbose=T
         # Apply weight initialization
         initialise_weights(model)
 
-        optimiser = optim.Adam(model.parameters(), lr=hp_comb['lr'])
-
-        train_network(model, train_set, hp_comb, optimiser, verbose, val_set)
+        train_network(model, train_set, hp_comb, verbose, val_set)
             
         torch.save(model.state_dict(), fp_out + 'seed ' + fp_in.split('_')[-1][:-1] + ' run ' + str(i) + '.pt')
 
@@ -2892,9 +2909,7 @@ def train_multiple_datasets(fp_py, fp_out, seed_base, max_iter, hp_comb):
 
         initialise_weights(model)
 
-        optimiser = optim.Adam(model.parameters(), lr=hp_comb['lr'])
-
-        train_network(model, train_set, hp_comb, optimiser, True, val_set)
+        train_network(model, train_set, hp_comb, True, val_set)
 
         torch.save(model.state_dict(), fp_out + 'seed ' + str(i + seed_base) + '.pt')
 
