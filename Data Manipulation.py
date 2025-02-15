@@ -193,17 +193,22 @@ def manipulate_and_split(fp_in, fp_out, fp_out_noInc):
     index_data['Injury Severity'] = index_data['Injury Severity'] - 1
 
     ### TRAIN TEST SPLIT ##########################################################
-    val_start_quarter = 32
     test_start_quarter = 40
 
+    finalised_claims = list(index_data.loc[index_data['finalised_quarter'] <= test_start_quarter, 'claim_no'].unique())
+
+    seed(1)
+    train_claims = sample(finalised_claims, int(0.8 * len(finalised_claims)))
+    val_claims = [claim for claim in finalised_claims if claim not in train_claims]
+
     # Valuation date is 40
-    train_index = index_data.loc[index_data['finalised_quarter'] <= val_start_quarter]
-    val_index = index_data.loc[(index_data['finalised_quarter'] > val_start_quarter) & (index_data['finalised_quarter'] <= test_start_quarter)]
+    train_index = index_data.loc[index_data['claim_no'].isin(train_claims)]
+    val_index = index_data.loc[index_data['claim_no'].isin(val_claims)]
     test_index = index_data.loc[index_data['finalised_quarter'] > test_start_quarter]
 
     # TESTING: removing all observations in validation and test sets that occur before the final observation in the training set
-    val_index = val_index.loc[val_index['pred_time'] >= val_start_quarter]
     test_index = test_index.loc[test_index['pred_time'] >= test_start_quarter]
+
 
     train_set = databoxes.loc[databoxes['index'].isin(train_index['index'])]
     val_set = databoxes.loc[databoxes['index'].isin(val_index['index'])]
