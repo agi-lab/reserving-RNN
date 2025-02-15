@@ -198,7 +198,7 @@ class ClaimsDataset(Dataset):
 
     def __init__(self, target_col, index_path, set_path, include_incurreds=True, 
                  include_covariates=False, transform_inputs=False, model_type='RNN'):
-        self.target_col = target_col # string referring to name of the target column (i.e. 'claim_size', 'log_m', 'true_ocl' or 'log_true_ocl')
+        self.target_col = target_col # string referring to name of the target column (i.e. 'claim_size', 'log_claim_size', 'log_m', 'true_ocl' or 'log_true_ocl')
         self.index = pd.read_csv(index_path) 
         self.set = pd.read_csv(set_path)
         self.include_incurreds = include_incurreds # boolean whether to use case estimate data or not
@@ -655,7 +655,8 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
     # Data loader
     trainloader = torch.utils.data.DataLoader(dataset=train_data, 
                                               batch_size=hp_comb['batch_size'], 
-                                              shuffle=True, drop_last=True)
+                                              shuffle=True, drop_last=True,
+                                              num_workers=4, pin_memory=True)
 
     # Train the model
     for epoch in range(hp_comb['epochs']):
@@ -824,6 +825,10 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
                 preds = raw_preds
                 ultimates = targets
             
+            elif train_data.target_col == 'log_claim_size':
+                preds = torch.exp(raw_preds)
+                ultimates = torch.exp(targets)
+            
             elif train_data.target_col == 'log_m':
                 preds = torch.exp(raw_preds) * latest_incurreds
                 ultimates = torch.exp(targets) * latest_incurreds
@@ -837,7 +842,7 @@ def train_network(model, train_data, hp_comb, optimiser, verbose=True,
                 ultimates = torch.exp(targets) + claim_sizes - true_ocls
 
             else:
-                ValueError('Invalid target, must be "claim_size", "log_m", "true_ocl" or "log_true_ocl"')
+                ValueError('Invalid target, must be "claim_size", "log_claim_size", "log_m", "true_ocl" or "log_true_ocl"')
 
 
             # Loss and gradient descent
@@ -979,7 +984,8 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
     # Data loader
     test_loader = torch.utils.data.DataLoader(dataset=test_data, 
                                               batch_size=hp_comb['batch_size'], 
-                                              shuffle=False)
+                                              shuffle=False,
+                                              num_workers=4, pin_memory=True)
 
     total_loss = 0
     total_datapoints = 0
@@ -1144,6 +1150,10 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
             if test_data.target_col == 'claim_size':
                 preds = raw_preds
                 ultimates = targets
+
+            elif test_data.target_col == 'log_claim_size':
+                preds = torch.exp(raw_preds)
+                ultimates = torch.exp(targets)
             
             elif test_data.target_col == 'log_m':
                 preds = torch.exp(raw_preds) * latest_incurreds
@@ -1158,7 +1168,7 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
                 ultimates = torch.exp(targets) + claim_sizes - true_ocls
 
             else:
-                ValueError('Invalid target, must be "claim_size", "log_m", "true_ocl" or "log_true_ocl"')
+                ValueError('Invalid target, must be "claim_size", "log_claim_size", "log_m", "true_ocl" or "log_true_ocl"')
 
 
             # Loss and gradient descent
