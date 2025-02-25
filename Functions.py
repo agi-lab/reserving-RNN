@@ -226,7 +226,16 @@ class ClaimsDataset(Dataset):
                                'dev_time': StandardScaler(), 
                                'cal_time': StandardScaler(),
                                'pred_time': StandardScaler(),
-                               'acc_quarter': StandardScaler()}
+                               'acc_quarter': StandardScaler(),
+                               'num_payments': StandardScaler(),
+                               'mean_payments': StandardScaler(),
+                               'vco_payments': StandardScaler(),
+                               'max_payment': StandardScaler(),
+                               'num_revisions': StandardScaler(),
+                               'mean_revisions': StandardScaler(),
+                               'max_revision': StandardScaler(),
+                               'total_revisions': StandardScaler(),
+                               'prop_upward_revisions': StandardScaler(),}
 
                 for key in self.scaler.keys():
                     if key in self.set.columns:
@@ -308,31 +317,19 @@ class ClaimsDataset(Dataset):
 
         # Setting up the data to be input into an FNN model
         elif self.model_type == 'FNN':
-            df_copy = df.copy()
-
-            # finding payment summary info
-            df_copy['payment'] = df_copy['paid'].diff()
-            df_copy['payment'] = df_copy['payment'].fillna(0)
-            payment_rows = df_copy.loc[df_copy['payment'] != 0]
-
-            num_payments = payment_rows.shape[0]
-            mean_payments = payment_rows['payment'].mean() if num_payments > 0 else 0
-            vco_payments = payment_rows['payment'].std() / mean_payments if num_payments > 1 else 0 # need minimum 2 payments for std dev
-            max_payment = payment_rows['payment'].max() if num_payments > 0 else 0
+            num_payments = self.index['num_payments'][index]
+            mean_payments = self.index['mean_payments'][index]
+            vco_payments = self.index['vco_payments'][index]
+            max_payment = self.index['max_payment'][index]
             
             # finding case estimate summary info
             if self.include_incurreds:
-                df_copy['revision'] = df_copy['ocl'].diff() + df_copy['paid'].diff()
-                df_copy['revision'] = df_copy['revision'].fillna(0)
-                revision_rows = df_copy.loc[df_copy['revision'] != 0]
+                num_revisions = self.index['num_revisions'][index]
+                mean_revisions = self.index['mean_revisions'][index]
+                max_revision = self.index['max_revision'][index]
+                total_revisions = self.index['total_revisions'][index]
+                prop_upward_revisions = self.index['prop_upward_revisions'][index]
 
-                num_revisions = revision_rows.shape[0]
-                max_revision = revision_rows['revision'].abs().max() if num_revisions > 0 else 0
-                total_revisions = revision_rows['revision'].abs().sum() if num_revisions > 0 else 0
-                prop_upward_revisions = (revision_rows['revision'] > 0).sum() / num_revisions if num_revisions > 0 else 0
-
-            #print(f'df_copy:\n{df_copy}\n')
-            
             if self.include_incurreds and self.include_covariates:
 
                 '''print(f'pred_time: {pred_time}, \
@@ -356,7 +353,7 @@ class ClaimsDataset(Dataset):
                         claim_no: {claim_no}')'''
 
                 return (pred_time, dev_quarter, acc_quarter, num_payments, mean_payments, vco_payments, max_payment, 
-                        num_revisions, max_revision, total_revisions, prop_upward_revisions, 
+                        num_revisions, mean_revisions, max_revision, total_revisions, prop_upward_revisions, 
                         legal_rep, injury_severity, claimant_age,
                         target, claim_size, latest_incurred, true_ocl, real_index, 
                         claim_no)
@@ -381,7 +378,7 @@ class ClaimsDataset(Dataset):
                         claim_no: {claim_no}')'''
 
                 return (pred_time, dev_quarter, acc_quarter, num_payments, mean_payments, vco_payments, max_payment, 
-                        num_revisions, max_revision, total_revisions, prop_upward_revisions,
+                        num_revisions, mean_revisions, max_revision, total_revisions, prop_upward_revisions,
                         target, claim_size, latest_incurred, true_ocl, real_index, 
                         claim_no)
             
@@ -618,17 +615,17 @@ class ClaimsFNN(nn.Module):
         """
         super(ClaimsFNN, self).__init__()
 
-        # 3 variables for transaction times, 4 for payments, 5 for revisions, 3 for covariates
-        self.num_features = 7 + 5 * include_incurreds + 3 * include_covariates
+        # 3 variables for transaction times, 4 for payments, 6 for revisions, 3 for covariates
+        self.num_features = 7 + 6 * include_incurreds + 3 * include_covariates
         self.final_activation = final_activation
         self.normalisation = normalisation
 
         if self.normalisation:
-            layers = [nn.BatchNorm1d(self.num_features), nn.Linear(self.num_features, nHidden), nn.ReLU(), nn.Dropout(dropout)]
+            layers = [nn.Linear(self.num_features, nHidden), nn.BatchNorm1d(nHidden), nn.ReLU(), nn.Dropout(dropout)]
 
             for _ in range(nLayers - 1):
-                layers.append(nn.BatchNorm1d(nHidden))
                 layers.append(nn.Linear(nHidden, nHidden))
+                layers.append(nn.BatchNorm1d(nHidden))
                 layers.append(nn.ReLU())
                 layers.append(nn.Dropout(dropout))
 
@@ -767,23 +764,24 @@ def train_network(model, train_data, hp_comb, verbose=True,
 
             elif hp_comb['model_type'] == 'FNN':
                 if hp_comb['include_incurreds'] and hp_comb['include_covariates']:
-                    (pred_times, dev_quarters, acc_quarters, num_payments, mean_payments, 
-                    vco_payments, max_payment, num_revisions, max_revision, 
-                    total_revisions, prop_upward_revisions, legal_reps, 
+                    (pred_times, dev_quarters, acc_quarters, num_paymentss, mean_paymentss, 
+                    vco_paymentss, max_payments, num_revisionss, mean_revisionss, max_revisions, 
+                    total_revisionss, prop_upward_revisionss, legal_reps, 
                     injury_severities, claimant_ages, targets, claim_sizes, 
                     latest_incurreds, true_ocls, indexes, claim_nos) = batch
 
                     pred_times = pred_times.to(device).float()
                     dev_quarters = dev_quarters.to(device).float()
                     acc_quarters = acc_quarters.to(device).float()
-                    num_payments = num_payments.to(device).float()
-                    mean_payments = mean_payments.to(device).float()
-                    vco_payments = vco_payments.to(device).float()
-                    max_payment = max_payment.to(device).float()
-                    num_revisions = num_revisions.to(device).float()
-                    max_revision = max_revision.to(device).float()
-                    total_revisions = total_revisions.to(device).float()
-                    prop_upward_revisions = prop_upward_revisions.to(device).float()
+                    num_paymentss = num_paymentss.to(device).float()
+                    mean_paymentss = mean_paymentss.to(device).float()
+                    vco_paymentss = vco_paymentss.to(device).float()
+                    max_payments = max_payments.to(device).float()
+                    num_revisionss = num_revisionss.to(device).float()
+                    mean_revisionss = mean_revisionss.to(device).float()
+                    max_revisions = max_revisions.to(device).float()
+                    total_revisionss = total_revisionss.to(device).float()
+                    prop_upward_revisionss = prop_upward_revisionss.to(device).float()
                     legal_reps = legal_reps.to(device).float()
                     injury_severities = injury_severities.to(device).float()
                     claimant_ages = claimant_ages.to(device).float()
@@ -795,52 +793,53 @@ def train_network(model, train_data, hp_comb, verbose=True,
                     #print(f'type of pred_times: {type(pred_times)}')
                     #print(f'dimension of pred_times: {pred_times.shape}')
 
-                    packed_extra = torch.stack((pred_times, dev_quarters, acc_quarters, num_payments, mean_payments,
-                                    vco_payments, max_payment, latest_incurreds, num_revisions, max_revision,
-                                    total_revisions, prop_upward_revisions, legal_reps,
+                    packed_extra = torch.stack((pred_times, dev_quarters, acc_quarters, num_paymentss, mean_paymentss,
+                                    vco_paymentss, max_payments, latest_incurreds, num_revisionss, mean_revisionss, max_revisions,
+                                    total_revisionss, prop_upward_revisionss, legal_reps,
                                     injury_severities, claimant_ages), dim=1).to(device)
 
                     #print(f'dimension of packed_extra: {packed_extra.shape}')
 
                 elif hp_comb['include_incurreds'] and not hp_comb['include_covariates']:
-                    (pred_times, dev_quarters, acc_quarters, num_payments, mean_payments, 
-                    vco_payments, max_payment, num_revisions, max_revision, 
-                    total_revisions, prop_upward_revisions, targets, claim_sizes, 
+                    (pred_times, dev_quarters, acc_quarters, num_paymentss, mean_paymentss, 
+                    vco_paymentss, max_payments, num_revisionss, mean_revisionss, max_revisions, 
+                    total_revisionss, prop_upward_revisionss, targets, claim_sizes, 
                     latest_incurreds, true_ocls, indexes, claim_nos) = batch
 
                     pred_times = pred_times.to(device).float()
                     dev_quarters = dev_quarters.to(device).float()
                     acc_quarters = acc_quarters.to(device).float()
-                    num_payments = num_payments.to(device).float()
-                    mean_payments = mean_payments.to(device).float()
-                    vco_payments = vco_payments.to(device).float()
-                    max_payment = max_payment.to(device).float()
-                    num_revisions = num_revisions.to(device).float()
-                    max_revision = max_revision.to(device).float()
-                    total_revisions = total_revisions.to(device).float()
-                    prop_upward_revisions = prop_upward_revisions.to(device).float()
+                    num_paymentss = num_paymentss.to(device).float()
+                    mean_paymentss = mean_paymentss.to(device).float()
+                    vco_paymentss = vco_paymentss.to(device).float()
+                    max_payments = max_payments.to(device).float()
+                    num_revisionss = num_revisionss.to(device).float()
+                    mean_revisionss = mean_revisionss.to(device).float()
+                    max_revisions = max_revisions.to(device).float()
+                    total_revisionss = total_revisionss.to(device).float()
+                    prop_upward_revisionss = prop_upward_revisionss.to(device).float()
                     targets = targets.to(device).float()
                     claim_sizes = claim_sizes.to(device).float()
                     latest_incurreds = latest_incurreds.to(device).float()
                     true_ocls = true_ocls.to(device).float()
 
-                    packed_extra = torch.stack((pred_times, dev_quarters, acc_quarters, num_payments, mean_payments,
-                                    vco_payments, max_payment, latest_incurreds, num_revisions, max_revision,
-                                    total_revisions, prop_upward_revisions), dim=1).to(device)
+                    packed_extra = torch.stack((pred_times, dev_quarters, acc_quarters, num_paymentss, mean_paymentss,
+                                    vco_paymentss, max_payments, latest_incurreds, num_revisionss, mean_revisionss, max_revisions,
+                                    total_revisionss, prop_upward_revisionss), dim=1).to(device)
 
                 elif not hp_comb['include_incurreds'] and hp_comb['include_covariates']:
-                    (pred_times, dev_quarters, acc_quarters, num_payments, mean_payments, 
-                    vco_payments, max_payment, legal_reps, injury_severities, 
+                    (pred_times, dev_quarters, acc_quarters, num_paymentss, mean_paymentss, 
+                    vco_paymentss, max_payments, legal_reps, injury_severities, 
                     claimant_ages, targets, claim_sizes, latest_incurreds, 
                     true_ocls, indexes, claim_nos) = batch
 
                     pred_times = pred_times.to(device).float()
                     dev_quarters = dev_quarters.to(device).float()
                     acc_quarters = acc_quarters.to(device).float()
-                    num_payments = num_payments.to(device).float()
-                    mean_payments = mean_payments.to(device).float()
-                    vco_payments = vco_payments.to(device).float()
-                    max_payment = max_payment.to(device).float()
+                    num_paymentss = num_paymentss.to(device).float()
+                    mean_paymentss = mean_paymentss.to(device).float()
+                    vco_paymentss = vco_paymentss.to(device).float()
+                    max_payments = max_payments.to(device).float()
                     legal_reps = legal_reps.to(device).float()
                     injury_severities = injury_severities.to(device).float()
                     claimant_ages = claimant_ages.to(device).float()
@@ -849,30 +848,30 @@ def train_network(model, train_data, hp_comb, verbose=True,
                     latest_incurreds = latest_incurreds.to(device).float()
                     true_ocls = true_ocls.to(device).float()
 
-                    packed_extra = torch.stack((pred_times, dev_quarters, acc_quarters, num_payments, mean_payments,
-                                    vco_payments, max_payment, legal_reps, injury_severities, 
+                    packed_extra = torch.stack((pred_times, dev_quarters, acc_quarters, num_paymentss, mean_paymentss,
+                                    vco_paymentss, max_payments, legal_reps, injury_severities, 
                                     claimant_ages), dim=1).to(device)
 
                 else:
-                    (pred_times, dev_quarters, acc_quarters, num_payments, mean_payments, 
-                    vco_payments, max_payment, targets, claim_sizes, latest_incurreds, 
+                    (pred_times, dev_quarters, acc_quarters, num_paymentss, mean_paymentss, 
+                    vco_paymentss, max_payments, targets, claim_sizes, latest_incurreds, 
                     true_ocls, indexes, claim_nos) = batch
 
                     pred_times = pred_times.to(device).float()
                     dev_quarters = dev_quarters.to(device).float()
                     acc_quarters = acc_quarters.to(device).float()
-                    num_payments = num_payments.to(device).float()
-                    mean_payments = mean_payments.to(device).float()
-                    vco_payments = vco_payments.to(device).float()
-                    max_payment = max_payment.to(device).float()
+                    num_paymentss = num_paymentss.to(device).float()
+                    mean_paymentss = mean_paymentss.to(device).float()
+                    vco_paymentss = vco_paymentss.to(device).float()
+                    max_payments = max_payments.to(device).float()
                     targets = targets.to(device).float()
                     claim_sizes = claim_sizes.to(device).float()
                     latest_incurreds = latest_incurreds.to(device).float()
                     true_ocls = true_ocls.to(device).float()
 
                     packed_extra = torch.stack((pred_times, dev_quarters, acc_quarters, 
-                                                num_payments, mean_payments,
-                                                vco_payments, max_payment), dim=1).to(device)
+                                                num_paymentss, mean_paymentss,
+                                                vco_paymentss, max_payments), dim=1).to(device)
 
             else:
                 raise ValueError("model_type must be 'RNN' or 'FNN'")
@@ -1118,23 +1117,24 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
 
             elif hp_comb['model_type'] == 'FNN':
                 if hp_comb['include_incurreds'] and hp_comb['include_covariates']:
-                    (pred_times, dev_quarters, acc_quarters, num_payments, mean_payments, 
-                    vco_payments, max_payment, num_revisions, max_revision, 
-                    total_revisions, prop_upward_revisions, legal_reps, 
+                    (pred_times, dev_quarters, acc_quarters, num_paymentss, mean_paymentss, 
+                    vco_paymentss, max_payments, num_revisionss, mean_revisionss, max_revisions, 
+                    total_revisionss, prop_upward_revisionss, legal_reps, 
                     injury_severities, claimant_ages, targets, claim_sizes, 
                     latest_incurreds, true_ocls, indexes, claim_nos) = batch
 
                     pred_times = pred_times.to(device).float()
                     dev_quarters = dev_quarters.to(device).float()
                     acc_quarters = acc_quarters.to(device).float()
-                    num_payments = num_payments.to(device).float()
-                    mean_payments = mean_payments.to(device).float()
-                    vco_payments = vco_payments.to(device).float()
-                    max_payment = max_payment.to(device).float()
-                    num_revisions = num_revisions.to(device).float()
-                    max_revision = max_revision.to(device).float()
-                    total_revisions = total_revisions.to(device).float()
-                    prop_upward_revisions = prop_upward_revisions.to(device).float()
+                    num_paymentss = num_paymentss.to(device).float()
+                    mean_paymentss = mean_paymentss.to(device).float()
+                    vco_paymentss = vco_paymentss.to(device).float()
+                    max_payments = max_payments.to(device).float()
+                    num_revisionss = num_revisionss.to(device).float()
+                    mean_revisionss = mean_revisionss.to(device).float()
+                    max_revisions = max_revisions.to(device).float()
+                    total_revisionss = total_revisionss.to(device).float()
+                    prop_upward_revisionss = prop_upward_revisionss.to(device).float()
                     legal_reps = legal_reps.to(device).float()
                     injury_severities = injury_severities.to(device).float()
                     claimant_ages = claimant_ages.to(device).float()
@@ -1143,50 +1143,51 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
                     latest_incurreds = latest_incurreds.to(device).float()
                     true_ocls = true_ocls.to(device).float()
 
-                    packed_extra = torch.stack((pred_times, dev_quarters, acc_quarters, num_payments, mean_payments,
-                                    vco_payments, max_payment, latest_incurreds, num_revisions, max_revision,
-                                    total_revisions, prop_upward_revisions, legal_reps,
+                    packed_extra = torch.stack((pred_times, dev_quarters, acc_quarters, num_paymentss, mean_paymentss,
+                                    vco_paymentss, max_payments, latest_incurreds, num_revisionss, mean_revisionss, max_revisions,
+                                    total_revisionss, prop_upward_revisionss, legal_reps,
                                     injury_severities, claimant_ages), dim=1).to(device)
 
                 elif hp_comb['include_incurreds'] and not hp_comb['include_covariates']:
-                    (pred_times, dev_quarters, acc_quarters, num_payments, mean_payments, 
-                    vco_payments, max_payment, num_revisions, max_revision, 
-                    total_revisions, prop_upward_revisions, targets, claim_sizes,
+                    (pred_times, dev_quarters, acc_quarters, num_paymentss, mean_paymentss, 
+                    vco_paymentss, max_payments, num_revisionss, mean_revisionss, max_revisions, 
+                    total_revisionss, prop_upward_revisionss, targets, claim_sizes,
                     latest_incurreds, true_ocls, indexes, claim_nos) = batch
 
                     pred_times = pred_times.to(device).float()
                     dev_quarters = dev_quarters.to(device).float()
                     acc_quarters = acc_quarters.to(device).float()
-                    num_payments = num_payments.to(device).float()
-                    mean_payments = mean_payments.to(device).float()
-                    vco_payments = vco_payments.to(device).float()
-                    max_payment = max_payment.to(device).float()
-                    num_revisions = num_revisions.to(device).float()
-                    max_revision = max_revision.to(device).float()
-                    total_revisions = total_revisions.to(device).float()
-                    prop_upward_revisions = prop_upward_revisions.to(device).float()
+                    num_paymentss = num_paymentss.to(device).float()
+                    mean_paymentss = mean_paymentss.to(device).float()
+                    vco_paymentss = vco_paymentss.to(device).float()
+                    max_payments = max_payments.to(device).float()
+                    num_revisionss = num_revisionss.to(device).float()
+                    mean_revisionss = mean_revisionss.to(device).float()
+                    max_revisions = max_revisions.to(device).float()
+                    total_revisionss = total_revisionss.to(device).float()
+                    prop_upward_revisionss = prop_upward_revisionss.to(device).float()
                     targets = targets.to(device).float()
                     claim_sizes = claim_sizes.to(device).float()
                     latest_incurreds = latest_incurreds.to(device).float()
                     true_ocls = true_ocls.to(device).float()
 
-                    packed_extra = torch.stack((pred_times, dev_quarters, acc_quarters, num_payments, mean_payments,
-                                    vco_payments, max_payment, latest_incurreds, num_revisions, max_revision,
-                                    total_revisions, prop_upward_revisions), dim=1).to(device)
+                    packed_extra = torch.stack((pred_times, dev_quarters, acc_quarters, num_paymentss, mean_paymentss,
+                                    vco_paymentss, max_payments, latest_incurreds, num_revisionss, mean_revisionss, max_revisions,
+                                    total_revisionss, prop_upward_revisionss), dim=1).to(device)
 
                 elif not hp_comb['include_incurreds'] and hp_comb['include_covariates']:
-                    (pred_times, dev_quarters, acc_quarters, num_payments, mean_payments, 
-                    vco_payments, max_payment, legal_reps, injury_severities, 
+                    (pred_times, dev_quarters, acc_quarters, num_paymentss, mean_paymentss, 
+                    vco_paymentss, max_payments, legal_reps, injury_severities, 
                     claimant_ages, targets, claim_sizes, latest_incurreds, 
                     true_ocls, indexes, claim_nos) = batch
 
                     pred_times = pred_times.to(device).float()
                     dev_quarters = dev_quarters.to(device).float()
                     acc_quarters = acc_quarters.to(device).float()
-                    num_payments = num_payments.to(device).float()
-                    mean_payments = mean_payments.to(device).float()
-                    vco_payments = vco_payments.to(device).float()
-                    max_payment = max_payment.to(device).float()
+                    num_paymentss = num_paymentss.to(device).float()
+                    mean_paymentss = mean_paymentss.to(device).float()
+                    vco_paymentss = vco_paymentss.to(device).float()
+                    max_payments = max_payments.to(device).float()
                     legal_reps = legal_reps.to(device).float()
                     injury_severities = injury_severities.to(device).float()
                     claimant_ages = claimant_ages.to(device).float()
@@ -1195,30 +1196,30 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
                     latest_incurreds = latest_incurreds.to(device).float()
                     true_ocls = true_ocls.to(device).float()
 
-                    packed_extra = torch.stack((pred_times, dev_quarters, acc_quarters, num_payments, mean_payments,
-                                    vco_payments, max_payment, legal_reps, injury_severities, 
+                    packed_extra = torch.stack((pred_times, dev_quarters, acc_quarters, num_paymentss, mean_paymentss,
+                                    vco_paymentss, max_payments, legal_reps, injury_severities, 
                                     claimant_ages), dim=1).to(device)
                 
                 else:
-                    (pred_times, dev_quarters, acc_quarters, num_payments, mean_payments, 
-                    vco_payments, max_payment, targets, claim_sizes, latest_incurreds, 
+                    (pred_times, dev_quarters, acc_quarters, num_paymentss, mean_paymentss, 
+                    vco_paymentss, max_payments, targets, claim_sizes, latest_incurreds, 
                     true_ocls, indexes, claim_nos) = batch
 
                     pred_times = pred_times.to(device).float()
                     dev_quarters = dev_quarters.to(device).float()
                     acc_quarters = acc_quarters.to(device).float()
-                    num_payments = num_payments.to(device).float()
-                    mean_payments = mean_payments.to(device).float()
-                    vco_payments = vco_payments.to(device).float()
-                    max_payment = max_payment.to(device).float()
+                    num_paymentss = num_paymentss.to(device).float()
+                    mean_paymentss = mean_paymentss.to(device).float()
+                    vco_paymentss = vco_paymentss.to(device).float()
+                    max_payments = max_payments.to(device).float()
                     targets = targets.to(device).float()
                     claim_sizes = claim_sizes.to(device).float()
                     latest_incurreds = latest_incurreds.to(device).float()
                     true_ocls = true_ocls.to(device).float()
 
                     packed_extra = torch.stack((pred_times, dev_quarters, acc_quarters, 
-                                                num_payments, mean_payments,
-                                                vco_payments, max_payment), dim=1).to(device)
+                                                num_paymentss, mean_paymentss,
+                                                vco_paymentss, max_payments), dim=1).to(device)
 
             else:
                 raise ValueError("model_type must be 'RNN' or 'FNN'")
