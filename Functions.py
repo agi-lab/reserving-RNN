@@ -1581,35 +1581,33 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
             
             # 1 dataset, multiple predictions
             if isinstance(actuals, pd.Series):
-                indicator = index_data[time_str] == time
-                
-                if time == 1:
-                    print(f'{index_data[indicator][time_str].unique()}')
-                    print(actuals[indicator])              
+                indicator = index_data[time_str] == time       
 
-                preds_by_time[:, index] = np.sum(preds[:, indicator], axis=1)
+                for i in (range(len(preds))):
+                    preds_by_time[i, index] = np.sum(preds[i][indicator])
+                    
                 actuals_by_time[index] = np.sum(actuals[indicator])
                 incurreds_by_time[index] = np.sum(incurreds[indicator])
                 ocls_by_time[index] = np.sum(ocls[indicator])
                 paids_by_time[index] = actuals_by_time[index] - ocls_by_time[index]
 
-                vsInc_by_time[:, index] = np.array([get_vsInc(actuals[indicator], 
-                                                    preds[i, indicator], 
-                                                    incurreds[indicator]) 
-                                        for i in range(preds.shape[0])])
+                for i in (range(len(preds))):
+                    vsInc_by_time[i, index] = get_vsInc(actuals[indicator], 
+                                                        preds[i][indicator], 
+                                                        incurreds[indicator])
 
-                weighted_vsInc_claimsize_by_time[:, index] = np.array([get_weighted_vsInc_claimsize(actuals[indicator], 
-                                                                    preds[i, indicator], 
-                                                                    incurreds[indicator]) 
-                                                for i in range(preds.shape[0])])
 
-                weighted_vsInc_ocl_by_time[:, index] = np.array([get_weighted_vsInc_ocl(actuals[indicator], 
-                                                                    preds[i, indicator], 
-                                                                    incurreds[indicator], 
-                                                                    ocls[indicator]) 
-                                                for i in range(preds.shape[0])])
+                    weighted_vsInc_claimsize_by_time[i, index] = get_weighted_vsInc_claimsize(actuals[indicator], 
+                                                                        preds[i][indicator], 
+                                                                        incurreds[indicator])
 
-                ocl_preds_by_time[:, index] = preds_by_time[:, index] - paids_by_time[index]
+                    weighted_vsInc_ocl_by_time[i, index] = get_weighted_vsInc_ocl(actuals[indicator], 
+                                                                        preds[i][indicator], 
+                                                                        incurreds[indicator], 
+                                                                        ocls[indicator])
+
+                    ocl_preds_by_time[i, index] = preds_by_time[i][index] - paids_by_time[index]
+
                 ocl_incurreds_by_time[index] = incurreds_by_time[index] - paids_by_time[index]
 
             # multiple datasets, multiple predictions
@@ -2669,11 +2667,9 @@ def test_multiple_initialisations(fp_in, fp_out, hp_comb, iterations, verbose=Tr
                             hp_comb['transform_inputs'],
                             hp_comb['model_type'],
                             scaler=train_set.scaler)
-    
-    preds_matrix = np.zeros(shape=(iterations, len(test_set.index.index)))
-    vsInc_list = np.zeros(shape=iterations)
-    weighted_vsInc_claimsize_list = np.zeros(shape=iterations)
-    weighted_vsInc_ocl_list = np.zeros(shape=iterations)
+
+    results = []
+    val_date = 40
 
     for i in range(iterations):
         print(f'Iteration {i}')
@@ -2704,12 +2700,54 @@ def test_multiple_initialisations(fp_in, fp_out, hp_comb, iterations, verbose=Tr
         
         paids = actuals - ocls
 
-        preds_matrix[i] = preds
-        vsInc_list[i] = get_vsInc(actuals, preds, incurreds)
-        weighted_vsInc_claimsize_list[i] = get_weighted_vsInc_claimsize(actuals, preds, 
-                                                    incurreds)
+
+
+        vsInc = get_vsInc(actuals, preds, incurreds)
+        weighted_vsInc_claimsize = get_weighted_vsInc_claimsize(actuals, preds, incurreds)
+        weighted_vsInc_ocl = get_weighted_vsInc_ocl(actuals, preds, incurreds, ocls)
+
+        preds_val = preds[test_set.index['pred_time'] == val_date]
+        actuals_val = actuals[test_set.index['pred_time'] == val_date]
+        incurreds_val = incurreds[test_set.index['pred_time'] == val_date]
+        ocls_val = ocls[test_set.index['pred_time'] == val_date]
+        paids_val = actuals_val - ocls_val
+
+        ocl_preds_val = preds_val - paids_val
+        weighted_vsInc_claimsize_val = get_weighted_vsInc_claimsize(actuals_val,
+                                                                   preds_val,
+                                                                   incurreds_val)
         
-        weighted_vsInc_ocl_list[i] = get_weighted_vsInc_ocl(actuals, preds, incurreds, ocls)
+        weighted_vsInc_ocl_val = get_weighted_vsInc_ocl(actuals_val,
+                                                        preds_val,
+                                                        incurreds_val,
+                                                        ocls_val)
+        
+        # MALE and MSLE
+        MALE_preds = MeanAbsoluteLogError()(preds, actuals)
+        MSLE_preds = MeanSquaredLogError()(preds, actuals)
+
+        MALE_preds_val = MeanAbsoluteLogError()(preds_val, actuals_val)
+        MSLE_preds_val = MeanSquaredLogError()(preds_val, actuals_val)
+
+        results.append({'preds': preds,
+                        'preds_val': preds_val,
+                        'vsInc': vsInc,
+                        'weighted_vsInc_claimsize': weighted_vsInc_claimsize,
+                        'weighted_vsInc_ocl': weighted_vsInc_ocl,
+                        'ocl_preds_val': ocl_preds_val, 
+                        'weighted_vsInc_claimsize_val': weighted_vsInc_claimsize_val,
+                        'weighted_vsInc_ocl_val': weighted_vsInc_ocl_val,
+                        'MALE_preds': MALE_preds,
+                        'MSLE_preds': MSLE_preds,
+                        'MALE_preds_val': MALE_preds_val,
+                        'MSLE_preds_val': MSLE_preds_val})
+
+    results = pd.DataFrame(results)
+    #print(results)
+
+    # formatting data for graphs by time
+    preds_matrix = results['preds'].tolist()
+    preds_matrix_val = results['preds_val'].tolist()
         
 
     # manually capping claim size predictions
@@ -2718,58 +2756,28 @@ def test_multiple_initialisations(fp_in, fp_out, hp_comb, iterations, verbose=Tr
 
 
     # Assessing distribution of aggregate claims
-    aggregate_preds = preds_matrix.sum(axis=1)
-    aggregate_actuals = actuals.sum()
-    aggregate_incurreds = incurreds.sum()
-
-    val_date = 40
+    aggregate_preds = np.array(preds_matrix).sum(axis=1)
 
     # finding aggregate incurred at the valuation date (calendar quarter 40)
-    preds_val = preds_matrix[:, test_set.index['pred_time'] == val_date]
     actuals_val = actuals[test_set.index['pred_time'] == val_date]
-    #print(f'actuals_val: {actuals_val}')
     incurreds_val = incurreds[test_set.index['pred_time'] == val_date]
-    #print(f'incurreds_val: {incurreds_val}')
     ocls_val = ocls[test_set.index['pred_time'] == val_date]
     paids_val = actuals_val - ocls_val
 
-    aggregate_preds_val = preds_val.sum(axis=1)
+    aggregate_preds_val = np.array(preds_matrix_val).sum(axis=1)
+
+
     aggregate_actuals_val = actuals_val.sum()
     aggregate_incurreds_val = incurreds_val.sum()
     aggregate_ocls_val = ocls_val.sum()
     aggregate_paids_val = paids_val.sum()
-
-    #print(f'actual ocls: {actuals_val - test_paid.values}')
-    model_ocls_run1 = preds_val[0] - aggregate_paids_val
-    #print(f'model ocls (1st run): {model_ocls_run1}')
-    #print(f'incurred ocls: {incurreds_val - test_paid.values}')
-
-    print(f'proportion of negative model ocls at valuation date: {np.mean((model_ocls_run1) < 0)}')
-    print(f'negative model ocls at valuation date: {(model_ocls_run1)[(model_ocls_run1) < 0]}')
-    print(f'sum of negative model ocls at valuation date: {np.sum((model_ocls_run1)[(model_ocls_run1) < 0])}')
-    print(f'sum of actual ocls from preds with negative ocl: {np.sum((ocls_val)[(model_ocls_run1) < 0])}')
-    print(f'sum of all actual ocls: {aggregate_ocls_val}\n')
-
-    print(f'proportion of negative model claim sizes at valuation date: {np.mean(preds_val[0] < 0)}')
-    print(f'negative model claim sizes at valuation date: {preds_val[0][preds_val[0] < 0]}')
-    print(f'sum of negative model claim sizes at valuation date: {np.sum(preds_val[0][preds_val[0] < 0])}\n')
-
-    model_ocls = preds_matrix[0] - paids
-
-    print(f"proportion of negative model OCLs: {np.mean(model_ocls < 0)}")
-    print(f'sum of negative model OCLs: {np.sum((model_ocls)[(model_ocls) < 0])}')
-    actuals_copy = actuals.copy().reset_index(drop=True)
-    paids_copy = paids.copy().reset_index(drop=True)
-    model_ocls_copy = model_ocls.copy().reset_index(drop=True)
-    print(f'sum of actual OCLs from preds with negative OCL: {np.sum((actuals_copy - paids_copy)[(model_ocls_copy) < 0])}')
-    print(f'sum of all actual OCLs: {np.sum(actuals_copy - paids_copy)}')
 
 
     ocl_preds = aggregate_preds_val - [aggregate_paids_val] * len(aggregate_preds_val)
     ocl_incurreds = aggregate_incurreds_val - aggregate_paids_val
 
     # weighted vsInc at the valuation date
-    weighted_vsInc_claimsize_list_val = np.array([get_weighted_vsInc_claimsize(actuals_val, 
+    """weighted_vsInc_claimsize_list_val = np.array([get_weighted_vsInc_claimsize(actuals_val, 
                                                            preds, 
                                                            incurreds_val)
                                         for preds in preds_val])
@@ -2778,19 +2786,32 @@ def test_multiple_initialisations(fp_in, fp_out, hp_comb, iterations, verbose=Tr
                                                                    preds,
                                                                    incurreds_val,
                                                                    ocls_val)
-                                        for preds in preds_val])
+                                        for preds in preds_val])"""
+
+
+    MALE_incurreds = MeanAbsoluteLogError()(incurreds, actuals)
+    MSLE_incurreds = MeanSquaredLogError()(incurreds, actuals)
+
+    MALE_incurreds_val = MeanAbsoluteLogError()(incurreds_val, actuals_val)
+    MSLE_incurreds_val = MeanSquaredLogError()(incurreds_val, actuals_val)
+
 
     # PLOTTING RESULTS ACROSS ALL WEIGHT INITIALISATIONS
 
-    #print(f'type of actuals: {type(actuals)}')
-    #print(f'type of preds_matrix: {type(preds_matrix)}')
-
-
     # Plotting aggregate claim size by dev quarter and cal quarter (mean across all iterations)
+    print('\nAll Predictions:\n')
     aggregate_by_time(test_set.index, actuals, preds_matrix, incurreds, ocls, 'dev_quarter')
     aggregate_by_time(test_set.index, actuals, preds_matrix, incurreds, ocls, 'pred_time')
     aggregate_by_time(test_set.index, actuals, preds_matrix, incurreds, ocls, 'rept_quarter')
     aggregate_by_time(test_set.index, actuals, preds_matrix, incurreds, ocls, 'acc_quarter')
+
+
+    # Valuation date only
+    print('\nValuation Date Predictions:\n')
+    aggregate_by_time(test_set.index, actuals_val, preds_matrix_val, incurreds_val, ocls_val, 'dev_quarter')
+    aggregate_by_time(test_set.index, actuals_val, preds_matrix_val, incurreds_val, ocls_val, 'pred_time')
+    aggregate_by_time(test_set.index, actuals_val, preds_matrix_val, incurreds_val, ocls_val, 'rept_quarter')
+    aggregate_by_time(test_set.index, actuals_val, preds_matrix_val, incurreds_val, ocls_val, 'acc_quarter')
 
     # Histogram of aggregate claims across all prediction times
     plt.hist(aggregate_preds, weights=(np.zeros_like(aggregate_preds) + 1. / 
@@ -2802,16 +2823,16 @@ def test_multiple_initialisations(fp_in, fp_out, hp_comb, iterations, verbose=Tr
     plt.show()
 
     # Histogram of distribution of vsInc accuracy
-    plt.hist(vsInc_list, weights=(np.zeros_like(vsInc_list) + 1. / 
-                                  vsInc_list.size), color='lightgreen')
+    plt.hist(results['vsInc'], weights=(np.zeros_like(results['vsInc']) + 1. / 
+                                  results['vsInc'].size), color='lightgreen')
     
     plt.xlabel('vsInc accuracy (%)')
     plt.ylabel('Frequency')
     plt.show()
 
     # Histogram of distribution of weighted vsInc (Claim Size)
-    plt.hist(weighted_vsInc_claimsize_list, weights=(np.zeros_like(weighted_vsInc_claimsize_list) + 
-                                           1. / weighted_vsInc_claimsize_list.size), 
+    plt.hist(results['weighted_vsInc_claimsize'], weights=(np.zeros_like(results['weighted_vsInc_claimsize']) + 
+                                           1. / results['weighted_vsInc_claimsize'].size), 
                                            color='lightgreen')
     
     plt.xlabel('weighted vsInc (Claim Size) (%)')
@@ -2819,8 +2840,8 @@ def test_multiple_initialisations(fp_in, fp_out, hp_comb, iterations, verbose=Tr
     plt.show()
 
     # Histogram of distribution of weighted vsInc (OCL)
-    plt.hist(weighted_vsInc_ocl_list, weights=(np.zeros_like(weighted_vsInc_ocl_list) +
-                                             1. / weighted_vsInc_ocl_list.size),
+    plt.hist(results['weighted_vsInc_ocl'], weights=(np.zeros_like(results['weighted_vsInc_ocl']) +
+                                             1. / results['weighted_vsInc_ocl'].size),
                                                 color='lightgreen')
     
     plt.xlabel('weighted vsInc (OCL) (%)')
@@ -2842,9 +2863,9 @@ def test_multiple_initialisations(fp_in, fp_out, hp_comb, iterations, verbose=Tr
     plt.show()
 
     # Histogram of weighted vsInc (Claim Size) at the valuation date
-    plt.hist(weighted_vsInc_claimsize_list_val, 
-             weights=(np.zeros_like(weighted_vsInc_claimsize_list_val) + 
-                      1. / weighted_vsInc_claimsize_list_val.size), 
+    plt.hist(results['weighted_vsInc_claimsize_val'], 
+             weights=(np.zeros_like(results['weighted_vsInc_claimsize_val']) + 
+                      1. / results['weighted_vsInc_claimsize_val'].size), 
              color='lightgreen')
     
     plt.xlabel('weighted vsInc (Claim Size) (%) at valuation date')
@@ -2852,9 +2873,9 @@ def test_multiple_initialisations(fp_in, fp_out, hp_comb, iterations, verbose=Tr
     plt.show()
 
     # Histogram of weighted vsInc (OCL) at the valuation date
-    plt.hist(weighted_vsInc_ocl_list_val,
-                weights=(np.zeros_like(weighted_vsInc_ocl_list_val) +
-                            1. / weighted_vsInc_ocl_list_val.size),
+    plt.hist(results['weighted_vsInc_ocl_val'],
+                weights=(np.zeros_like(results['weighted_vsInc_ocl_val']) +
+                            1. / results['weighted_vsInc_ocl_val'].size),
                 color='lightgreen')
     
     plt.xlabel('weighted vsInc (OCL) (%) at valuation date')
