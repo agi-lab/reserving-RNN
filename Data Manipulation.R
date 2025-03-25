@@ -13,9 +13,13 @@ print( getwd() )
 # fp_out = './Datasets/Python Inputs/small sample WithInc/'
 # fp_out_noInc = './Datasets/Python Inputs/small sample NoInc/'
 
-fp_in = './Datasets/R Outputs/complexity 1.csv'
-fp_out = './Datasets/Python Inputs/complexity 1 WithInc/'
-fp_out_noInc = './Datasets/Python Inputs/complexity 1 NoInc/'
+# fp_in = './Datasets/R Outputs/complexity 1.csv'
+# fp_out = './Datasets/Python Inputs/complexity 1 WithInc/'
+# fp_out_noInc = './Datasets/Python Inputs/complexity 1 NoInc/'
+
+fp_in = './Datasets/R Outputs/data_noInf_cov_TRUE_seed_20201006.csv'
+fp_out = './Datasets/Python Inputs/noInf_WithInc_seed_20201006/'
+fp_out_noInc = './Datasets/Python Inputs/noInf_NoInc_seed_20201006/'
 
 
 ################################################################################
@@ -68,7 +72,6 @@ index_data <- merge(index_data, data[, .(acc_quarter = mean(acc_quarter),
 setnames(data, "claim_no", "claim_number")
 
 index_data[, ':=' (incurred = data[claim_number == claim_no & txn_time < pred_time, incurred[length(incurred)]],
-                   OCL = data[claim_number == claim_no & txn_time < pred_time, OCL[length(OCL)]],
                    cumpaid = data[claim_number == claim_no & txn_time < pred_time, cumpaid[length(cumpaid)]]), keyby=.(claim_no, pred_time)]
 
 # having $1 discrepancy is ok due to rounding 
@@ -78,8 +81,9 @@ index_data[, ':=' (index = 0:(.N - 1),
                    dev_quarter = pred_time - rept_quarter + 1,
                    m = claim_size / incurred,
                    log_m = log(claim_size / incurred),
+                   true_ocl = claim_size - cumpaid,
                    log_claim_size = log(claim_size),
-                   log_true_ocl = log(OCL))]
+                   log_true_ocl = log(claim_size - cumpaid))]
 
 
 # Creating databoxes (i.e. 'set' data)
@@ -88,7 +92,7 @@ databoxes <- index_data[, data[claim_number == claim_no & txn_time < pred_time, 
 
 # renaming columns
 setnames(data, "claim_number", "claim_no")
-setnames(index_data, c("incurred", "OCL"), c("latest_incurred", "true_ocl"))
+setnames(index_data, c("incurred"), c("latest_incurred"))
 setnames(databoxes, c('txn_time', 'txn_delay', 'cumpaid', 'OCL'), c('cal_time', 'dev_time', 'paid', 'ocl'))
 
 # Some claim reports have payments really close to 0, need to set these to exactly 0
@@ -151,17 +155,36 @@ index_data <- merge(index_data, revision_summary, by='index', all.x=TRUE)
 index_data[is.na(index_data)] <- 0
 
 ### TRAIN TEST SPLIT ######################################################
-val_start_quarter = 36
-test_start_quarter = 40
+# val_start_quarter = 36
+# test_start_quarter = 40
+# 
+# # Valuation date is 40
+# train_index <- index_data[finalised_quarter <= val_start_quarter]
+# val_index <- index_data[finalised_quarter > val_start_quarter & finalised_quarter <= test_start_quarter]
+# test_index <- index_data[finalised_quarter > test_start_quarter]
+# 
+# # TESTING: removing all observations in test sets that occur before the final observation in the training set
+# val_index <- val_index[pred_time >= val_start_quarter]
+# test_index <- test_index[pred_time >= test_start_quarter]
 
-# Valuation date is 40
-train_index <- index_data[finalised_quarter <= val_start_quarter]
-val_index <- index_data[finalised_quarter > val_start_quarter & finalised_quarter <= test_start_quarter]
-test_index <- index_data[finalised_quarter > test_start_quarter]
 
-# TESTING: removing all observations in test sets that occur before the final observation in the training set
-val_index <- val_index[pred_time >= val_start_quarter]
-test_index <- test_index[pred_time >= test_start_quarter]
+# TESTING: randomly splitting by claim (i.e. not by time)
+train_prop = 0.6
+val_prop = 0.2
+test_prop = 0.2
+
+all_claims <- 1:max(index_data$claim_no)
+
+train_claims <- sample(all_claims, train_prop * length(all_claims), replace = FALSE)
+val_claims <- all_claims[!(all_claims %in% train_claims)]
+
+test_claims <- sample(val_claims, test_prop / (val_prop + test_prop) * length(val_claims), replace = FALSE)
+val_claims <- val_claims[!(val_claims %in% test_claims)]
+
+train_index <- index_data[claim_no %in% train_claims]
+val_index <- index_data[claim_no %in% val_claims]
+test_index <- index_data[claim_no %in% test_claims]
+
 
 
 train_set <- databoxes[index %in% train_index[, index]]
