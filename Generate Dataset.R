@@ -6,12 +6,7 @@
 library(SPLICE)
 library(data.table)
 
-seed <- 20250101
-with_cov = TRUE
-fp <- 'C:/Users/matty/OneDrive/MCOM/Research Report/Matt Model/Datasets/R Outputs/'
-for_aggregate = FALSE
-
-generate_dataset <- function(seed, with_cov, fp, for_aggregate) {
+generate_dataset <- function(seed, with_cov, fp, for_aggregate, exposure) {
   # 'with_cov' is a boolean for whether to simulate covariates (True) or not (False)
   
   # Should generate a dataset with and without covariates under the same seed to 
@@ -29,7 +24,7 @@ generate_dataset <- function(seed, with_cov, fp, for_aggregate) {
   # Claim Occurrence (Default exposure is 12k, so our frequency should be around 
   # 67% higher than default)
   # for 'small' datasets we use 20k as exposure, for 'large' datasets we use 100k (only using 'small' for now)
-  n_vector <- claim_frequency(E = 20000, freq = 0.03)
+  n_vector <- claim_frequency(E = exposure, freq = 0.03)
   occurrence_times <- claim_occurrence(frequency_vector = n_vector)
   
   # Claim Size
@@ -131,14 +126,43 @@ generate_dataset <- function(seed, with_cov, fp, for_aggregate) {
   }
   
   write.csv(test_incurred_dataset_noInf, paste0(fp, 'data_noInf_cov_', with_cov, 
-                                                '_seed_', seed, '.csv'))
+                                                '_seed_', as.integer(seed), '.csv'))
   
 }
 
-generate_dataset(seed, with_cov, fp, for_aggregate)
+################################################################################
+
+seed <- 20201006
+with_cov = TRUE
+fp <- 'C:/Users/matty/OneDrive/MCOM/Research Report/Matt Model/Datasets/R Outputs/'
+for_aggregate <- FALSE
+exposure <- 20000
+
+generate_dataset(seed, with_cov, fp, for_aggregate, exposure)
+
+
+seed <- 20250101
+with_cov = TRUE
+fp <- 'C:/Users/matty/OneDrive/MCOM/Research Report/Matt Model/Datasets/R Outputs/'
+for_aggregate <- FALSE
+exposure <- 100000
+
+generate_dataset(seed, with_cov, fp, for_aggregate, exposure)
 
 
 
+seed <- 300000
+with_cov = TRUE
+fp <- 'C:/Users/matty/OneDrive/MCOM/Research Report/Matt Model/Datasets/R Outputs/'
+for_aggregate <- FALSE
+exposure <- 300000
+
+generate_dataset(seed, with_cov, fp, for_aggregate, exposure)
+
+
+
+
+################################################################################
 
 # much shorter and simpler alternative to above code
 for (complexity in 1:5) {
@@ -189,3 +213,4 @@ for (complexity in 1:5) {
   write.csv(test_incurred_dataset, paste0(fp, 'complexity ', complexity, '.csv'))
   
 }
+
