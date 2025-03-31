@@ -258,3 +258,21 @@ for (i in 1:max_iter) {
   data_manipulation(fp_in, fp_out, fp_out_noInc)
 }
 print("Done!")
+
+
+# Large dataset
+fp_in = './Datasets/R Outputs/data_noInf_cov_TRUE_seed_20250101.csv'
+fp_out = './Datasets/Python Inputs/noInf_WithInc_seed_20250101/'
+fp_out_noInc = './Datasets/Python Inputs/noInf_NoInc_seed_20250101/'
+
+
+data_manipulation(fp_in, fp_out, fp_out_noInc)
+
+
+# Larger dataset
+fp_in = './Datasets/R Outputs/data_noInf_cov_TRUE_seed_300000.csv'
+fp_out = './Datasets/Python Inputs/noInf_WithInc_seed_300000/'
+fp_out_noInc = './Datasets/Python Inputs/noInf_NoInc_seed_300000/'
+
+
+data_manipulation(fp_in, fp_out, fp_out_noInc)
