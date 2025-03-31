@@ -690,6 +690,7 @@ def train_network(model, train_data, hp_comb, verbose=True,
     """
 
     if val_data is not None:
+        train_loss_list = []
         val_loss_list = []
         val_vsInc_list = []
         val_weighted_vsInc_claimsize_list = []
@@ -731,6 +732,8 @@ def train_network(model, train_data, hp_comb, verbose=True,
         total_uie = 0
         total_ultimates = 0
         total_ocls = 0
+        total_preds = 0
+        total_incurreds = 0
 
         for batch in trainloader:
 
@@ -957,6 +960,8 @@ def train_network(model, train_data, hp_comb, verbose=True,
             total_weighted_vsInc_ocl += sum(true_ocls * (torch.abs((ultimates-preds)) < 
                                         torch.abs((ultimates-latest_incurreds))))
             
+            total_preds += sum(preds)
+            total_incurreds += sum(latest_incurreds)
             total_ultimates += sum(ultimates)
             total_ocls += sum(true_ocls)
             
@@ -972,6 +977,8 @@ def train_network(model, train_data, hp_comb, verbose=True,
         total_loss = total_loss / total_datapoints
         weighted_vsinc_claimsize = total_weighted_vsInc_claimsize / total_ultimates * 100
         weighted_vsinc_ocl = total_weighted_vsInc_ocl / total_ocls * 100
+        agg_clmsize_percent_error_model = (total_preds - total_incurreds) / total_ultimates * 100
+        agg_clmsize_percent_error_incurreds = (total_incurreds - total_ultimates) / total_ultimates * 100
 
         if verbose:
             print(f'Epoch {epoch}: '
@@ -979,7 +986,12 @@ def train_network(model, train_data, hp_comb, verbose=True,
                   f'vsInc = {vs_incurred_accuracy:.2f}%, '
                   f'weighted vsInc (Claim Size) = {weighted_vsinc_claimsize:.2f}%, '
                   f'weighted vsInc (OCL) = {weighted_vsinc_ocl:.2f}%, '
-                  f'UIE = {uie:.2f}%')
+                  f'UIE = {uie:.2f}%, '
+                  f'model aggregate error = {agg_clmsize_percent_error_model:.2f}%, '
+                  f'incurreds aggregate error = {agg_clmsize_percent_error_incurreds:.2f}%')
+            
+        if isinstance(train_loss_list, list):
+            train_loss_list.append(total_loss)
 
         # Validation
         if val_data:
@@ -1030,6 +1042,15 @@ def train_network(model, train_data, hp_comb, verbose=True,
                           f'weighted vsInc (OCL) = {best_val_weighted_vsInc_ocl:.2f}%, '
                           f'UIE = {best_val_uie:.2f}%\n')
                     
+                    # produce epoch graph
+                    plt.plot(list(range(epoch + 1)), train_loss_list, label='train loss')
+                    plt.plot(list(range(epoch + 1)), val_loss_list, label='val loss')
+                    plt.xlabel('epoch')
+                    plt.ylabel('loss')
+                    plt.title('Loss curves over epochs')
+                    plt.legend()
+                    plt.show()
+                    
                 break
 
     # if we reach max number of epochs, save the best weights
@@ -1056,6 +1077,15 @@ def train_network(model, train_data, hp_comb, verbose=True,
                   f'weighted vsInc (OCL) = {best_val_weighted_vsInc_ocl:.2f}%, '
                   f'UIE = {best_val_uie:.2f}%\n')
             
+            # produce epoch graph
+            plt.plot(list(range(epoch + 1)), train_loss_list, label='train loss')
+            plt.plot(list(range(epoch + 1)), val_loss_list, label='val loss')
+            plt.xlabel('epoch')
+            plt.ylabel('loss')
+            plt.title('Loss curves over epochs')
+            plt.legend()
+            plt.show()
+            
 def test_network(model, test_data, hp_comb, preds_list=None, verbose=True, 
                  val_loss_list=None, val_vsInc_list=None, 
                  val_weighted_vsInc_claimsize_list=None, 
@@ -1081,6 +1111,8 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
     total_uie = 0
     total_ultimates = 0
     total_ocls = 0
+    total_preds = 0
+    total_incurreds = 0
 
     # set model to test mode
     model.eval()
@@ -1300,6 +1332,9 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
                                              (torch.abs((ultimates-preds)) > 
                                               torch.abs((ultimates-
                                                          latest_incurreds)))))
+            
+            total_preds += sum(preds)
+            total_incurreds += sum(latest_incurreds)
 
             if preds_list is not None:
                 preds_list.extend([pred.item() for pred in preds])
@@ -1310,13 +1345,17 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
         total_loss = total_loss / total_datapoints
         weighted_vsinc_claimsize = total_weighted_vsInc_claimsize / total_ultimates * 100
         weighted_vsinc_ocl = total_weighted_vsInc_ocl / total_ocls * 100
+        agg_clmsize_percent_error_model = (total_preds - total_incurreds) / total_ultimates * 100
+        agg_clmsize_percent_error_incurreds = (total_incurreds - total_ultimates) / total_ultimates * 100
 
         if verbose:
             print(f'loss = {round_threshold(total_loss):,}, '
                   f'vsInc = {vs_incurred_accuracy:.2f}%, '
                   f'weighted vsInc (Claim Size) = {weighted_vsinc_claimsize:.2f}%, '
                   f'weighted vsInc (OCL) = {weighted_vsinc_ocl:.2f}%, '
-                  f'UIE = {uie:.2f}%')
+                  f'UIE = {uie:.2f}%, '
+                  f'model aggregate error = {agg_clmsize_percent_error_model:.2f}%, '
+                  f'incurreds aggregate error = {agg_clmsize_percent_error_incurreds:.2f}%')
 
         if isinstance(val_loss_list, list):
             val_loss_list.append(total_loss)
