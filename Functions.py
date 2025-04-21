@@ -1558,21 +1558,7 @@ def get_dev_quarter(test_data, actuals, preds, incurreds, ocls, dev_quarter):
     return dev_actuals, dev_preds, dev_incurreds, dev_ocls, dev_data
 
 def extract_performance_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
-    pass
-
-def graph_by_time():
-    pass
-
-def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
-    '''Plots aggregate claims, vsInc and weighted vsInc over time, 
-       either calendar or development
-       
-       time_str should be either 'pred_time' (for calendar quarter results), 
-       'dev_quarter' for 'development' quarter results (i.e. time since notification, not since occurrence),
-       'acc_quarter' for accident quarter results,
-       or 'rept_quarter' for reported quarter results'''
-
-    # 1 dataset, 1 prediction
+# 1 dataset, 1 prediction
     if isinstance(preds, pd.Series):
         times = np.sort(index_data[time_str].unique())
 
@@ -1585,6 +1571,14 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
         vsInc_by_time = np.zeros(len(times))
         weighted_vsInc_claimsize_by_time = np.zeros(len(times))
         weighted_vsInc_ocl_by_time = np.zeros(len(times))
+
+        # these will not be used for 1 dataset, 1 prediction but need to define them for the results dictionary
+        ocl_preds_by_time = None
+        ocl_incurreds_by_time = None
+        preds_over_actuals_by_time = None
+        incurreds_over_actuals_by_time = None
+        ocl_preds_over_actuals_by_time = None
+        ocl_incurreds_over_actuals_by_time = None
 
     else:
         
@@ -1599,6 +1593,12 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
 
             ocl_preds_by_time = np.zeros((len(preds), len(times)))
             ocl_incurreds_by_time = np.zeros(len(times))
+
+            # these will not be used for 1 dataset, multiple predictions but need to define them for the results dictionary
+            preds_over_actuals_by_time = None
+            incurreds_over_actuals_by_time = None
+            ocl_preds_over_actuals_by_time = None
+            ocl_incurreds_over_actuals_by_time = None
 
         # multiple datasets, multiple predictions
         else:
@@ -1619,6 +1619,10 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
 
             ocl_preds_over_actuals_by_time = np.zeros((len(preds), len(times)))
             ocl_incurreds_over_actuals_by_time = np.zeros((len(incurreds), len(times)))
+
+            # these will not be used for multiple datasets, multiple predictions but need to define them for the results dictionary
+            ocl_preds_by_time = None
+            ocl_incurreds_by_time = None
 
         preds_by_time = np.zeros((len(preds), len(times)))
         vsInc_by_time = np.zeros((len(preds), len(times)))
@@ -1712,11 +1716,46 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
                     ocl_preds_over_actuals_by_time[i, index] = (np.sum(preds[i][indicator]) - paids_by_time[i, index]) / ocls_by_time[i, index] if ocls_by_time[i, index] > 0 else 1
                     ocl_incurreds_over_actuals_by_time[i, index] = (np.sum(incurreds[i][indicator]) - paids_by_time[i, index]) / ocls_by_time[i, index] if ocls_by_time[i, index] > 0 else 1
 
+    results = {
+        'actuals_by_time': actuals_by_time,
+        'incurreds_by_time': incurreds_by_time,
+        'ocls_by_time': ocls_by_time,
+        'paids_by_time': paids_by_time,
+        'preds_by_time': preds_by_time,
+        'vsInc_by_time': vsInc_by_time,
+        'weighted_vsInc_claimsize_by_time': weighted_vsInc_claimsize_by_time,
+        'weighted_vsInc_ocl_by_time': weighted_vsInc_ocl_by_time,
+        'ocl_preds_by_time': ocl_preds_by_time,
+        'ocl_incurreds_by_time': ocl_incurreds_by_time,
+        'preds_over_actuals_by_time': preds_over_actuals_by_time,
+        'incurreds_over_actuals_by_time': incurreds_over_actuals_by_time,
+        'ocl_preds_over_actuals_by_time': ocl_preds_over_actuals_by_time,
+        'ocl_incurreds_over_actuals_by_time': ocl_incurreds_over_actuals_by_time,
+        'times': times,
+        'index_data': index_data,
+        'actuals': actuals,
+        'preds': preds,
+        'incurreds': incurreds,
+        'ocls': ocls,
+        'time_str': time_str
+    }
+
+    return results
+
+def graph_by_time(results_model1, name_model1=None, results_model2=None, name_model2=None, include_incurreds=True):
+    ''' results_modelx is a dictionary of the results from the model,
+    include_incurreds is a boolean to include the raw case estimates in the graph
+    if results_model2 is passed, then name_model1 and name_model2 need to be passed'''
+
     # Converting aggregate OCLs to proportion
-    if not (isinstance(preds, pd.Series) or isinstance(actuals, pd.Series)):
+    if not (isinstance(results_model1['preds'], pd.Series) or isinstance(results_model1['actuals'], pd.Series)):
         # multiple datasets
         # sum over multiple datasets (could change this later to have a boxplot of claim counts)
-        ocls_by_time = np.sum(ocls_by_time, axis=0)
+        ocls_by_time = np.sum(results_model1['ocls_by_time'], axis=0)
+    
+    else:
+        # 1 dataset
+        ocls_by_time = results_model1['ocls_by_time']
 
     pred_cumulative_ocl_by_time = np.cumsum(ocls_by_time)
     pred_cumulative_prop_by_time = pred_cumulative_ocl_by_time / pred_cumulative_ocl_by_time[-1]
@@ -1724,12 +1763,31 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
     #print(pred_cumulative_ocl_by_time)
     #print(pred_cumulative_prop_by_time)
 
+    times = results_model1['times']
+    time_str = results_model1['time_str']
+    actuals = results_model1['actuals']
+    actuals_by_time = results_model1['actuals_by_time']
+    paids_by_time = results_model1['paids_by_time']
+    ocls_by_time = results_model1['ocls_by_time']
+
+    if include_incurreds:
+        incurreds_by_time = results_model1['incurreds_by_time']
+        ocl_incurreds_by_time = results_model1['ocl_incurreds_by_time']
+        incurreds_over_actuals_by_time = results_model1['incurreds_over_actuals_by_time']
+        ocl_incurreds_over_actuals_by_time = results_model1['ocl_incurreds_over_actuals_by_time']
+
     # 1 dataset, 1 prediction
-    if isinstance(preds, pd.Series):
+    if isinstance(results_model1['preds'], pd.Series):
         # plotting aggregate preds
         plt.plot(times, actuals_by_time, label='Actuals')
-        plt.plot(times, preds_by_time, label='Predictions')
-        plt.plot(times, incurreds_by_time, label='Incurreds')
+        if name_model1 is None:
+            plt.plot(times, results_model1['preds_by_time'], label='Predictions')
+        else:
+            plt.plot(times, results_model1['preds_by_time'], label=name_model1)
+        if results_model2 is not None:
+            plt.plot(times, results_model2['preds_by_time'], label=name_model2)
+        if include_incurreds:
+            plt.plot(times, incurreds_by_time, label='Incurreds')
         plt.legend(loc='upper right')
         plt.title('Aggregate claim sizes')
 
@@ -1748,8 +1806,14 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
 
         # plotting aggregate ocls
         plt.plot(times, ocls_by_time, label='Actuals')
-        plt.plot(times, preds_by_time - paids_by_time, label='Predictions')
-        plt.plot(times, incurreds_by_time - paids_by_time, label='Incurreds')
+        if name_model1 is None:
+            plt.plot(times, results_model1['preds_by_time'] - paids_by_time, label='Predictions')
+        else:
+            plt.plot(times, results_model1['preds_by_time'] - paids_by_time, label=name_model1)
+        if results_model2 is not None:
+            plt.plot(times, results_model2['preds_by_time'] - paids_by_time, label=name_model2)
+        if include_incurreds:
+            plt.plot(times, incurreds_by_time - paids_by_time, label='Incurreds')
         plt.legend(loc='upper right')
         plt.title('OCLs')
 
@@ -1767,7 +1831,14 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
         plt.show()
 
         # plotting vsInc
-        plt.plot(times, vsInc_by_time)
+        if name_model1 is None:
+            plt.plot(times, results_model1['vsInc_by_time'])
+        else:
+            plt.plot(times, results_model1['vsInc_by_time'], label=name_model1)
+        if results_model2 is not None:
+            plt.plot(times, results_model2['vsInc_by_time'], label=name_model2)
+            plt.legend(loc='upper right')
+
         plt.ylabel('vsInc (%)')
 
         if time_str == 'pred_time':
@@ -1784,7 +1855,14 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
         plt.show()
 
         # plotting weighted vsInc by claim size
-        plt.plot(times, weighted_vsInc_claimsize_by_time)
+        if name_model1 is None:
+            plt.plot(times, results_model1['weighted_vsInc_claimsize_by_time'])
+        else:
+            plt.plot(times, results_model1['weighted_vsInc_claimsize_by_time'], label=name_model1)
+        if results_model2 is not None:
+            plt.plot(times, results_model2['weighted_vsInc_claimsize_by_time'], label=name_model2)
+            plt.legend(loc='upper right')
+
         plt.ylabel('Weighted vsInc (Claim Size) (%)')
 
         if time_str == 'pred_time':
@@ -1801,7 +1879,14 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
         plt.show()
 
         # plotting weighted vsInc by ocl
-        plt.plot(times, weighted_vsInc_ocl_by_time)
+        if name_model1 is None:
+            plt.plot(times, results_model1['weighted_vsInc_ocl_by_time'])
+        else:
+            plt.plot(times, results_model1['weighted_vsInc_ocl_by_time'], label=name_model1)
+        if results_model2 is not None:
+            plt.plot(times, results_model2['weighted_vsInc_ocl_by_time'], label=name_model2)
+            plt.legend(loc='upper right')
+
         plt.ylabel('Weighted vsInc (OCL) (%)')
 
         if time_str == 'pred_time':
@@ -1822,10 +1907,18 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
         # 1 dataset, multiple predictions
         if isinstance(actuals, pd.Series):
             # Boxplot with better colours
-            bp_preds = box_plot(preds_by_time, positions=times, median_colour='red', edge_colour='chocolate', fill_colour='bisque')
+            bp_preds_model1 = box_plot(results_model1['preds_by_time'], positions=times, median_colour='red', edge_colour='chocolate', fill_colour='bisque')
+            if results_model2 is not None:
+                bp_preds_model2 = box_plot(results_model2['preds_by_time'], positions=times, median_colour='yellow', edge_colour='indigo', fill_colour='violet')
             plt.plot(times, actuals_by_time)
-            plt.plot(times, incurreds_by_time, color = 'green')
-            plt.legend([bp_preds["boxes"][0]], ['Predictions'])
+            if include_incurreds:
+                plt.plot(times, incurreds_by_time, color = 'green')
+
+            if name_model1 is None and name_model2 is None:
+                plt.legend([bp_preds_model1["boxes"][0]], ['Predictions'])
+            else:
+                plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
+
             plt.grid(axis='both', linestyle='--', alpha=0.7)
 
             ticks = [int(time) for time in times if (time % 5 == 0 and len(times) < 50) 
@@ -1848,10 +1941,18 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
             plt.show()
             
             # Boxplot with aggregate OCLs instead of aggregate claim sizes
-            bp_preds = box_plot(ocl_preds_by_time, positions=times, median_colour='red', edge_colour='chocolate', fill_colour='bisque')
+            bp_preds_model1 = box_plot(results_model1['ocl_preds_by_time'], positions=times, median_colour='red', edge_colour='chocolate', fill_colour='bisque')
+            if results_model2 is not None:
+                bp_preds_model2 = box_plot(results_model2['ocl_preds_by_time'], positions=times, median_colour='yellow', edge_colour='indigo', fill_colour='violet')
             plt.plot(times, ocls_by_time)
-            plt.plot(times, ocl_incurreds_by_time, color = 'green')
-            plt.legend([bp_preds["boxes"][0]], ['Predictions'])
+            if include_incurreds:
+                plt.plot(times, ocl_incurreds_by_time, color = 'green')
+
+            if name_model1 is None and name_model2 is None:
+                plt.legend([bp_preds_model1["boxes"][0]], ['Predictions'])
+            else:
+                plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
+
             plt.grid(axis='both', linestyle='--', alpha=0.7)
 
             ticks = [int(time) for time in times if (time % 5 == 0 and len(times) < 50) 
@@ -1877,11 +1978,25 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
         else:
 
             # Boxplot with better colours
-            bp_preds = box_plot(preds_over_actuals_by_time, positions=times, median_colour='red', edge_colour='chocolate', fill_colour='bisque')
-            bp_incurreds = box_plot(incurreds_over_actuals_by_time, positions=times, median_colour='cyan', edge_colour='darkgreen', fill_colour='lightgreen')
+            bp_preds_model1 = box_plot(results_model1['preds_over_actuals_by_time'], positions=times, median_colour='red', edge_colour='chocolate', fill_colour='bisque')
+            if results_model2 is not None:
+                bp_preds_model2 = box_plot(results_model2['preds_over_actuals_by_time'], positions=times, median_colour='yellow', edge_colour='indigo', fill_colour='violet')
+            if include_incurreds:
+                bp_incurreds = box_plot(incurreds_over_actuals_by_time, positions=times, median_colour='cyan', edge_colour='darkgreen', fill_colour='lightgreen')
             plt.plot(times, [1] * len(times))
             plt.plot(times, pred_cumulative_prop_by_time, color='black', alpha = 0.8)
-            plt.legend([bp_preds["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'Incurreds'])
+
+            if name_model1 is None and name_model2 is None:
+                if include_incurreds:
+                    plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'Incurreds'])
+                else:
+                    plt.legend([bp_preds_model1["boxes"][0]], ['Predictions'])
+            else:
+                if include_incurreds:
+                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'Incurreds'])
+                else:
+                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
+
             plt.grid(axis='both', linestyle='--', alpha=0.7)
 
             ticks = [int(time) for time in times if (time % 5 == 0 and len(times) < 50) 
@@ -1904,11 +2019,25 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
             plt.show()
             
             # Boxplot with aggregate OCLs instead of aggregate claim sizes
-            bp_preds = box_plot(ocl_preds_over_actuals_by_time, positions=times, median_colour='red', edge_colour='chocolate', fill_colour='bisque')
-            bp_incurreds = box_plot(ocl_incurreds_over_actuals_by_time, positions=times, median_colour='cyan', edge_colour='darkgreen', fill_colour='lightgreen')
+            bp_preds_model1 = box_plot(results_model1['ocl_preds_over_actuals_by_time'], positions=times, median_colour='red', edge_colour='chocolate', fill_colour='bisque')
+            if results_model2 is not None:
+                bp_preds_model2 = box_plot(results_model2['ocl_preds_over_actuals_by_time'], positions=times, median_colour='yellow', edge_colour='indigo', fill_colour='violet')
+            if include_incurreds:
+                bp_incurreds = box_plot(ocl_incurreds_over_actuals_by_time, positions=times, median_colour='cyan', edge_colour='darkgreen', fill_colour='lightgreen')
             plt.plot(times, [1] * len(times))
             plt.plot(times, pred_cumulative_prop_by_time, color='black', alpha = 0.8)
-            plt.legend([bp_preds["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'Incurreds'])
+
+            if name_model1 is None and name_model2 is None:
+                if include_incurreds:
+                    plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'Incurreds'])
+                else:
+                    plt.legend([bp_preds_model1["boxes"][0]], ['Predictions'])
+            else:
+                if include_incurreds:
+                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'Incurreds'])
+                else:
+                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
+
             plt.grid(axis='both', linestyle='--', alpha=0.7)
 
             ticks = [int(time) for time in times if (time % 5 == 0 and len(times) < 50) 
@@ -1931,13 +2060,29 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
             plt.show()
 
             # Boxplot with aggregate OCLs (hard code negative OCL preds as 0)
-            ocl_preds_over_actuals_by_time[ocl_preds_over_actuals_by_time < 0] = 0
+            results_model1['ocl_preds_over_actuals_by_time'][results_model1['ocl_preds_over_actuals_by_time'] < 0] = 0
+            if results_model2 is not None:
+                results_model2['ocl_preds_over_actuals_by_time'][results_model2['ocl_preds_over_actuals_by_time'] < 0] = 0
 
-            bp_preds = box_plot(ocl_preds_over_actuals_by_time, positions=times, median_colour='red', edge_colour='chocolate', fill_colour='bisque')
-            bp_incurreds = box_plot(ocl_incurreds_over_actuals_by_time, positions=times, median_colour='cyan', edge_colour='darkgreen', fill_colour='lightgreen')
+            bp_preds_model1 = box_plot(results_model1['ocl_preds_over_actuals_by_time'], positions=times, median_colour='red', edge_colour='chocolate', fill_colour='bisque')
+            if results_model2 is not None:
+                bp_preds_model2 = box_plot(results_model2['ocl_preds_over_actuals_by_time'], positions=times, median_colour='yellow', edge_colour='indigo', fill_colour='violet')
+            if include_incurreds:
+                bp_incurreds = box_plot(ocl_incurreds_over_actuals_by_time, positions=times, median_colour='cyan', edge_colour='darkgreen', fill_colour='lightgreen')
             plt.plot(times, [1] * len(times))
             plt.plot(times, pred_cumulative_prop_by_time, color='black', alpha = 0.8)
-            plt.legend([bp_preds["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'Incurreds'])
+
+            if name_model1 is None and name_model2 is None:
+                if include_incurreds:
+                    plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'Incurreds'])
+                else:
+                    plt.legend([bp_preds_model1["boxes"][0]], ['Predictions'])
+            else:
+                if include_incurreds:
+                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'Incurreds'])
+                else:
+                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
+
             plt.grid(axis='both', linestyle='--', alpha=0.7)
 
             ticks = [int(time) for time in times if (time % 5 == 0 and len(times) < 50) 
@@ -1960,8 +2105,14 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
             plt.show()
 
         # boxplot of weighted vsInc by claim size
-        box_plot(weighted_vsInc_claimsize_by_time, positions=times, median_colour='fuchsia', edge_colour='darkblue', fill_colour='lightblue')
+        bp_preds_model1 = box_plot(results_model1['weighted_vsInc_claimsize_by_time'], positions=times, median_colour='fuchsia', edge_colour='darkblue', fill_colour='lightblue')
+        if results_model2 is not None:
+            bp_preds_model2 = box_plot(results_model2['weighted_vsInc_claimsize_by_time'], positions=times, median_colour='orange', edge_colour='darkgoldenrod', fill_colour='cornsilk')
         plt.plot(times, pred_cumulative_prop_by_time * 100, color='black', alpha = 0.7)
+
+        if name_model1 is not None and name_model2 is not None:
+            plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
+
         plt.title('Weighted vsInc (Claim Size)')
         plt.ylabel('Weighted vsInc (Claim Size) (%)')
         plt.grid(axis='both', linestyle='--', alpha=0.7)
@@ -1984,8 +2135,14 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
         plt.show()
 
         # boxplot of weighted vsInc by ocl
-        box_plot(weighted_vsInc_ocl_by_time, positions=times, median_colour='fuchsia', edge_colour='darkblue', fill_colour='lightblue')
+        bp_preds_model1 = box_plot(results_model1['weighted_vsInc_ocl_by_time'], positions=times, median_colour='fuchsia', edge_colour='darkblue', fill_colour='lightblue')
+        if results_model2 is not None:
+            bp_preds_model2 = box_plot(results_model2['weighted_vsInc_ocl_by_time'], positions=times, median_colour='orange', edge_colour='darkgoldenrod', fill_colour='cornsilk')
         plt.plot(times, pred_cumulative_prop_by_time * 100, color='black', alpha = 0.7)
+
+        if name_model1 is not None and name_model2 is not None:
+            plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
+
         plt.title('Weighted vsInc (OCL)')
         plt.ylabel('Weighted vsInc (OCL) (%)')
         plt.grid(axis='both', linestyle='--', alpha=0.7)
@@ -2006,7 +2163,19 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
             raise ValueError('Invalid time_str')
 
         plt.show()
-    
+
+def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
+    '''Plots aggregate claims, vsInc and weighted vsInc over time, 
+       either calendar or development
+       
+       time_str should be either 'pred_time' (for calendar quarter results), 
+       'dev_quarter' for 'development' quarter results (i.e. time since notification, not since occurrence),
+       'acc_quarter' for accident quarter results,
+       or 'rept_quarter' for reported quarter results'''
+
+    results_model1 = extract_performance_by_time(index_data, actuals, preds, incurreds, ocls, time_str)
+    graph_by_time(results_model1, include_incurreds=True)
+
 
 def get_aggregates(actuals, preds, incurreds, ocls):
     '''Prints the sum over each claim and censor point for all claims, 
@@ -3198,14 +3367,75 @@ def plot_results_multiple_datasets(results):
     plt.ylabel('MSLE')
     plt.show()
 
-
 def test_multiple_datasets(fp_py, fp_out, seed_base, max_iter, hp_comb):
     results = results_multiple_datasets(fp_py, fp_out, seed_base, max_iter, hp_comb)
     plot_results_multiple_datasets(results)
 
+def plot_multiple_models_by_time(results_model1, results_model2, name_model1, name_model2):
+
+    # formatting data for graphs by time
+    actuals_matrix = results_model1['actuals'].tolist()
+    incurreds_matrix = results_model1['incurreds'].tolist()
+    ocls_matrix = results_model1['ocls'].tolist()
+
+    actuals_matrix_val = results_model1['actuals_val'].tolist()
+    incurreds_matrix_val = results_model1['incurreds_val'].tolist()
+    ocls_matrix_val = results_model1['ocls_val'].tolist()
+
+    preds_matrix_model1 = results_model1['preds'].tolist()
+    preds_matrix_val_model1 = results_model1['preds_val'].tolist()
+    preds_matrix_model2 = results_model2['preds'].tolist()
+    preds_matrix_val_model2 = results_model2['preds_val'].tolist()
+
+    print('\nALL PREDICTIONS:\n')
+    for time_str in ['dev_quarter', 'pred_time', 'rept_quarter', 'acc_quarter']:
+        aggregate_performance1 = extract_performance_by_time(results_model1['test_set_index'], 
+                                                             actuals_matrix, 
+                                                             preds_matrix_model1, 
+                                                             incurreds_matrix, 
+                                                             ocls_matrix, 
+                                                             time_str)
+
+        aggregate_performance2 = extract_performance_by_time(results_model2['test_set_index'],
+                                                             actuals_matrix, 
+                                                             preds_matrix_model2, 
+                                                             incurreds_matrix, 
+                                                             ocls_matrix, 
+                                                             time_str)
+        
+        graph_by_time(results_model1=aggregate_performance1,
+                      results_model2=aggregate_performance2, 
+                      name_model1=name_model1, 
+                      name_model2=name_model2,
+                      include_incurreds=True)
+        
+    print('\nVALUATION DATE PREDICTIONS:\n')
+    for time_str in ['dev_quarter', 'pred_time', 'rept_quarter', 'acc_quarter']:
+        aggregate_performance1 = extract_performance_by_time(results_model1['test_set_index_val'], 
+                                                             actuals_matrix_val, 
+                                                             preds_matrix_val_model1, 
+                                                             incurreds_matrix_val, 
+                                                             ocls_matrix_val, 
+                                                             time_str)
+
+        aggregate_performance2 = extract_performance_by_time(results_model2['test_set_index_val'], 
+                                                             actuals_matrix_val, 
+                                                             preds_matrix_val_model2, 
+                                                             incurreds_matrix_val, 
+                                                             ocls_matrix_val, 
+                                                             time_str)
+        
+        graph_by_time(results_model1=aggregate_performance1,
+                      results_model2=aggregate_performance2, 
+                      name_model1=name_model1, 
+                      name_model2=name_model2,
+                      include_incurreds=True)    
+
 def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, seed_base, max_iter, hp_comb_model1, hp_comb_model2, name_model1, name_model2):
     results_model1 = results_multiple_datasets(fp_py, fp_out_model1, seed_base, max_iter, hp_comb_model1)
     results_model2 = results_multiple_datasets(fp_py, fp_out_model2, seed_base, max_iter, hp_comb_model2)
+
+    plot_multiple_models_by_time(results_model1, results_model2, name_model1, name_model2)
 
     # Boxplot of weighted vsInc (OCL)
     sns.boxplot(data=[results_model1['weighted_vsInc_ocl'], 
