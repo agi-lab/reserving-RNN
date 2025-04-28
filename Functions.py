@@ -8,6 +8,9 @@ import matplotlib.ticker as ticker
 from copy import deepcopy
 from itertools import product
 from sklearn.preprocessing import StandardScaler
+import warnings
+import pickle
+import os
 
 import torch
 import torch.nn as nn
@@ -21,6 +24,45 @@ from torch.nn.utils import clip_grad_norm_
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 ### HELPER FUNCTIONS/CLASSES ##################################################
+
+def save_dictionary(data, file_path):
+    """Saves a dictionary as a pickle file.
+
+    Args:
+        data (dict): The dictionary to be saved.
+        file_path (str): The path to the folder where the dictionary will be saved.
+    """
+    full_path = os.path.join(file_path, 'hyperparameter_grid.pickle')
+
+    with open(full_path, 'wb') as handle:
+        pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+def load_dictionary(file_path):
+    """Loads a dictionary from a pickle file.
+
+    Args:
+        file_path (str): The path to the file from which the dictionary will be loaded.
+
+    Returns:
+        dict: The loaded dictionary, or None if an error occurs.
+    """
+
+    full_path = os.path.join(file_path, 'hyperparameter_grid.pickle')
+
+    if not os.path.exists(full_path):
+         print(f"Error: File not found: {full_path}")
+         return None
+    
+    with open(full_path, 'rb') as handle:
+        try:
+            data = pickle.load(handle)
+            return data
+        except Exception as e:
+            print(f"Error loading dictionary: {e}")
+            return None
+    
+
 
 def round_threshold(num, threshold=1000):
     """Takes a float and rounds it to the nearest integer if it is above a 
@@ -255,7 +297,7 @@ class ClaimsDataset(Dataset):
                         self.index[key] = self.scaler[key].transform(self.index[key].values.reshape(-1, 1))
 
                     else:
-                        raise ValueError(f'{key} not found in either set or index dataframes')
+                        warnings.warn(f'{key} not found in either set or index dataframes')
 
             else:
                 # apply scaling
@@ -267,7 +309,7 @@ class ClaimsDataset(Dataset):
                         self.index[key] = self.scaler[key].transform(self.index[key].values.reshape(-1, 1))
 
                     else:
-                        raise ValueError(f'{key} not found in either set or index dataframes')
+                        warnings.warn(f'{key} not found in either set or index dataframes')
 
     def __len__(self):
         return len(self.index)
@@ -1057,7 +1099,7 @@ def train_network(model, train_data, hp_comb, verbose=True,
                           f'UIE = {best_val_uie:.2f}%\n')
                     
                     # produce epoch graphs
-                    plt.plot(list(range(epoch + 1)), train_loss_list, label='train loss', color='blue')
+                    '''plt.plot(list(range(epoch + 1)), train_loss_list, label='train loss', color='blue')
                     plt.xlabel('epoch')
                     plt.ylabel('training loss')
                     plt.title('Training loss curve over epochs')
@@ -1085,7 +1127,7 @@ def train_network(model, train_data, hp_comb, verbose=True,
                     plt.ylabel('aggregate error (%)')
                     plt.title('Aggregate error curve over epochs')
                     plt.legend()
-                    plt.show()
+                    plt.show()'''
                     
                 break
 
@@ -1114,7 +1156,7 @@ def train_network(model, train_data, hp_comb, verbose=True,
                   f'UIE = {best_val_uie:.2f}%\n')
             
             # produce epoch graphs
-            plt.plot(list(range(epoch + 1)), train_loss_list, label='train loss', color='blue')
+            '''plt.plot(list(range(epoch + 1)), train_loss_list, label='train loss', color='blue')
             plt.xlabel('epoch')
             plt.ylabel('training loss')
             plt.title('Training loss curve over epochs')
@@ -1142,7 +1184,7 @@ def train_network(model, train_data, hp_comb, verbose=True,
             plt.ylabel('aggregate error (%)')
             plt.title('Aggregate error curve over epochs')
             plt.legend()
-            plt.show()
+            plt.show()'''
             
 def test_network(model, test_data, hp_comb, preds_list=None, verbose=True, 
                  val_loss_list=None, val_vsInc_list=None, 
@@ -2588,7 +2630,7 @@ def analyse_model(model, dataset, hp_comb,
     get_heatmap(large_actuals, large_preds, nbins=10)
     get_close_far(large_actuals, large_preds, large_incurreds)
 
-def cross_validate(fp_in, fp_out, hyperparameter_grid, verbose=True):
+def cross_validate(fp_in, fp_out, fp_hp_comb, hyperparameter_grid, verbose=True):
     """
     Trains each model in the grid, tunes using a validation set, chooses the 
     'best' one based on the smallest validation loss and produces numerical 
@@ -2735,6 +2777,9 @@ def cross_validate(fp_in, fp_out, hyperparameter_grid, verbose=True):
         print(f'Best validation weighted vsInc (OCL): {best_val_weighted_vsInc_ocl:.2f}%')
         print(f'Best validation UIE: {best_val_uie:.2f}%')
 
+    # saving hyperparameters to json file
+    save_dictionary(best_hp_comb, fp_hp_comb)
+
     # Results for best model
     if hp_comb['model_type'] == "RNN":
         model = ClaimsRNN(best_hp_comb['nHidden'], best_hp_comb['nLayers'], 
@@ -2758,7 +2803,7 @@ def cross_validate(fp_in, fp_out, hyperparameter_grid, verbose=True):
     model.load_state_dict(best_weights)
     analyse_model(model, val_set, best_hp_comb)
 
-def train_multiple_initialisations(fp_in, fp_out, hp_comb, iterations, verbose=True):
+def train_multiple_initialisations(fp_in, fp_out, iterations, verbose=True):
     '''Retrains the model on the test set multiple times, producing graphical 
        summaries for the first iteration as well as some graphical summaries 
        of the distribution of predictions
@@ -2769,6 +2814,8 @@ def train_multiple_initialisations(fp_in, fp_out, hp_comb, iterations, verbose=T
          hp_comb: dictionary of hyperparameters
          iterations: number of times to retrain the model
          verbose: whether to print written outputs and progress to console'''
+    
+    hp_comb = load_dictionary(fp_out)
 
     train_set = ClaimsDataset(hp_comb['target_col'], 
                               fp_in + 'train_index.csv', 
@@ -2815,7 +2862,10 @@ def train_multiple_initialisations(fp_in, fp_out, hp_comb, iterations, verbose=T
             
         torch.save(model.state_dict(), fp_out + 'seed ' + fp_in.split('_')[-1][:-1] + ' run ' + str(i) + '.pt')
 
-def test_multiple_initialisations(fp_in, fp_out, hp_comb, iterations, verbose=True):
+def test_multiple_initialisations(fp_in, fp_out, iterations, verbose=True):
+
+    hp_comb = load_dictionary(fp_out)
+
     train_set = ClaimsDataset(hp_comb['target_col'], 
                             fp_in + 'train_index.csv', 
                             fp_in + 'train_set.csv', 
@@ -3039,7 +3089,10 @@ def test_multiple_initialisations(fp_in, fp_out, hp_comb, iterations, verbose=Tr
 
 
 
-def train_multiple_datasets(fp_py, fp_out, seed_base, max_iter, hp_comb):
+def train_multiple_datasets(fp_py, fp_out, seed_base, max_iter):
+
+    hp_comb = load_dictionary(fp_out)
+
     for i in range(1, max_iter + 1):
         torch.manual_seed(1)
         fp_py_full = fp_py + str(i + seed_base) + '/'
@@ -3087,7 +3140,10 @@ def train_multiple_datasets(fp_py, fp_out, seed_base, max_iter, hp_comb):
 
         torch.save(model.state_dict(), fp_out + 'seed ' + str(i + seed_base) + '.pt')
 
-def results_multiple_datasets(fp_py, fp_out, seed_base, max_iter, hp_comb):
+def results_multiple_datasets(fp_py, fp_out, seed_base, max_iter):
+
+    hp_comb = load_dictionary(fp_out)
+
     results = []
 
     for i in range(1, max_iter + 1):
@@ -3155,8 +3211,8 @@ def results_multiple_datasets(fp_py, fp_out, seed_base, max_iter, hp_comb):
         ocl_preds_val = aggregate_preds_val - aggregate_paids_val
         ocl_incurreds_val = aggregate_incurreds_val - aggregate_paids_val
 
-        ocl_error_preds = round_threshold(100 * abs(ocl_preds_val - aggregate_ocls_val) / aggregate_ocls_val)
-        ocl_error_incurreds = round_threshold(100 * abs(ocl_incurreds_val - aggregate_ocls_val) / aggregate_ocls_val)
+        ocl_error_preds = round_threshold(100 * (ocl_preds_val - aggregate_ocls_val) / aggregate_ocls_val)
+        ocl_error_incurreds = round_threshold(100 * (ocl_incurreds_val - aggregate_ocls_val) / aggregate_ocls_val)
 
         # weighted vsInc at the valuation date
         weighted_vsInc_claimsize_val = round_threshold(get_weighted_vsInc_claimsize(actuals_val, preds_val, incurreds_val))
@@ -3367,8 +3423,8 @@ def plot_results_multiple_datasets(results):
     plt.ylabel('MSLE')
     plt.show()
 
-def test_multiple_datasets(fp_py, fp_out, seed_base, max_iter, hp_comb):
-    results = results_multiple_datasets(fp_py, fp_out, seed_base, max_iter, hp_comb)
+def test_multiple_datasets(fp_py, fp_out, seed_base, max_iter):
+    results = results_multiple_datasets(fp_py, fp_out, seed_base, max_iter)
     plot_results_multiple_datasets(results)
 
 def plot_multiple_models_by_time(results_model1, results_model2, name_model1, name_model2):
@@ -3431,9 +3487,10 @@ def plot_multiple_models_by_time(results_model1, results_model2, name_model1, na
                       name_model2=name_model2,
                       include_incurreds=True)    
 
-def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, seed_base, max_iter, hp_comb_model1, hp_comb_model2, name_model1, name_model2):
-    results_model1 = results_multiple_datasets(fp_py, fp_out_model1, seed_base, max_iter, hp_comb_model1)
-    results_model2 = results_multiple_datasets(fp_py, fp_out_model2, seed_base, max_iter, hp_comb_model2)
+def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, seed_base, max_iter, name_model1, name_model2):
+
+    results_model1 = results_multiple_datasets(fp_py, fp_out_model1, seed_base, max_iter)
+    results_model2 = results_multiple_datasets(fp_py, fp_out_model2, seed_base, max_iter)
 
     plot_multiple_models_by_time(results_model1, results_model2, name_model1, name_model2)
 
@@ -3459,6 +3516,7 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     sns.boxplot(data=[results_model1['ocl_error_preds_val'], 
                       results_model2['ocl_error_preds_val'],
                       results_model1['ocl_error_incurreds_val']])
+    plt.axhline(0, color='blue', linestyle='dashed', linewidth=2)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.xticks([0, 1, 2], [name_model1, name_model2, 'Incurreds'])
     plt.ylabel('OCL error (%)')
