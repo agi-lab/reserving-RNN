@@ -147,7 +147,7 @@ data_manipulation <- function(fp_in, fp_out, fp_out_noInc) {
   index_data[is.na(index_data)] <- 0
   
   ### TRAIN TEST SPLIT ######################################################
-  val_start_quarter = 36
+  val_start_quarter = 34
   test_start_quarter = 40
 
   # Valuation date is 40
@@ -156,7 +156,7 @@ data_manipulation <- function(fp_in, fp_out, fp_out_noInc) {
   test_index <- index_data[finalised_quarter > test_start_quarter]
 
   # reorganise some observations from training and val sets (moving 20% of val -> train for now)
-  val_to_train_prop = 0.2
+  val_to_train_prop = 0.5
   train_claims <- train_index[, unique(claim_no)]
   val_claims <- val_index[, unique(claim_no)]
   claims_to_move <- sample(val_claims, val_to_train_prop * length(val_claims))
@@ -164,6 +164,9 @@ data_manipulation <- function(fp_in, fp_out, fp_out_noInc) {
   val_index <- val_index[!(claim_no %in% claims_to_move)]
   train_index <- index_data[claim_no %in% c(train_claims, claims_to_move)]
   
+  # train_index[, length(unique(claim_no))]
+  # val_index[, length(unique(claim_no))]
+  # train_index[, length(unique(claim_no))] / (train_index[, length(unique(claim_no))] + val_index[, length(unique(claim_no))])
   
   # train_index[, length(unique(claim_no))]
   # val_index[, length(unique(claim_no))]
