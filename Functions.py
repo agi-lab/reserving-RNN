@@ -251,6 +251,9 @@ class ClaimsDataset(Dataset):
         self.model_type = model_type # string referring to the type of model being used (either 'RNN' (includes LSTM and GRU) or 'FNN')
         self.scaler = scaler # dictionary of scalers to be applied to the data
 
+        # creating new column for target output (so that any scalings applied to the target column are not applied to the original data)
+        self.index['target'] = self.index[self.target_col]
+
         if self.transform_inputs:
 
             # log transform some inputs
@@ -270,7 +273,7 @@ class ClaimsDataset(Dataset):
             # standardise inputs and output
             if self.scaler is None:
                 # learn scalings and apply them
-                self.scaler = {self.target_col: StandardScaler(), 
+                self.scaler = {'target': StandardScaler(), 
                                'paid': StandardScaler(), 
                                'ocl': StandardScaler(), 
                                'dev_time': StandardScaler(), 
@@ -327,7 +330,7 @@ class ClaimsDataset(Dataset):
         pred_time = df['pred_time'].mean()
 
         # Get relevant info from index.csv file
-        target = self.index[self.target_col][index]
+        target = self.index['target'][index]
         claim_size = self.index['claim_size'][index]
         latest_incurred = self.index['latest_incurred'][index]
         true_ocl = self.index['true_ocl'][index]
@@ -940,8 +943,8 @@ def train_network(model, train_data, hp_comb, verbose=True,
 
             # undoing any scaling
             if train_data.scaler is not None:
-                target_mean = train_data.scaler[train_data.target_col].mean_[0]
-                target_std = train_data.scaler[train_data.target_col].scale_[0]
+                target_mean = train_data.scaler['target'].mean_[0]
+                target_std = train_data.scaler['target'].scale_[0]
 
                 preds = raw_preds * target_std + target_mean
                 ultimates = targets * target_std + target_mean
@@ -1370,8 +1373,8 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
 
             # undoing any scaling
             if test_data.scaler is not None:
-                target_mean = test_data.scaler[test_data.target_col].mean_[0]
-                target_std = test_data.scaler[test_data.target_col].scale_[0]
+                target_mean = test_data.scaler['target'].mean_[0]
+                target_std = test_data.scaler['target'].scale_[0]
 
                 preds = raw_preds * target_std + target_mean
                 ultimates = targets * target_std + target_mean
