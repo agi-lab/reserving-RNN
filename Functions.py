@@ -230,6 +230,12 @@ def box_plot(data, positions, median_colour, edge_colour, fill_colour):
         
     return bp
 
+def bias_correction_factor(preds, targets):
+    ''' assumes preds and targets are both on actual scale (i.e. not log scale) '''
+    bias = np.mean(np.exp(np.log(targets) - np.log(preds)))
+    print(f'Bias correction factor: {bias}')
+    return bias
+
 ### MODEL CLASSES #############################################################
 
 class ClaimsDataset(Dataset):
@@ -2364,6 +2370,11 @@ def analyse_model(model, dataset, hp_comb,
     # Analysing all claims at all prediction times
     print('All')
     actuals, preds, incurreds, ocls = get_preds_actuals(model, dataset, hp_comb)
+
+    # apply bias correction
+    if dataset.target_col == 'log_claim_size' or dataset.target_col == 'log_true_ocl':
+        preds = preds * bias_correction_factor(preds, actuals)
+
     get_aggregates(actuals, preds, incurreds, ocls)
     get_losses(actuals, preds, incurreds, dataset, hp_comb)
     print(f'vsInc: {get_vsInc(actuals, preds, incurreds):.2f}%')
@@ -2877,6 +2888,15 @@ def test_multiple_initialisations(fp_in, fp_out, iterations, verbose=True):
                             hp_comb['transform_inputs'],
                             hp_comb['model_type'],
                             scaler=None)
+    
+    val_set = ClaimsDataset(hp_comb['target_col'], 
+                            fp_in + 'val_index.csv', 
+                            fp_in + 'val_set.csv', 
+                            hp_comb['include_incurreds'],
+                            hp_comb['include_covariates'],
+                            hp_comb['transform_inputs'],
+                            hp_comb['model_type'],
+                            scaler=train_set.scaler)
 
     test_set = ClaimsDataset(hp_comb['target_col'], 
                             fp_in + 'test_index.csv', 
@@ -2916,6 +2936,15 @@ def test_multiple_initialisations(fp_in, fp_out, iterations, verbose=True):
         # testing the model somehow
         actuals, preds, incurreds, ocls = get_preds_actuals(model, test_set, 
                                                           hp_comb, verbose)
+        
+        # apply bias correction
+        if val_set.target_col == 'log_claim_size' or val_set.target_col == 'log_true_ocl':
+            (actuals_validation, 
+             preds_validation, 
+             incurreds_validation, 
+             ocls_validation) = get_preds_actuals(model, val_set, hp_comb, verbose)
+
+            preds = preds * bias_correction_factor(preds_validation, actuals_validation)
         
         paids = actuals - ocls
 
@@ -3160,6 +3189,15 @@ def results_multiple_datasets(fp_py, fp_out, seed_base, max_iter):
                                 hp_comb['transform_inputs'],
                                 hp_comb['model_type'],
                                 scaler=None)
+        
+        val_set = ClaimsDataset(hp_comb['target_col'], 
+                                fp_py_full + 'val_index.csv', 
+                                fp_py_full + 'val_set.csv', 
+                                hp_comb['include_incurreds'],
+                                hp_comb['include_covariates'],
+                                hp_comb['transform_inputs'],
+                                hp_comb['model_type'],
+                                scaler=train_set.scaler)
 
         test_set = ClaimsDataset(hp_comb['target_col'], 
                                 fp_py_full + 'test_index.csv', 
@@ -3191,6 +3229,15 @@ def results_multiple_datasets(fp_py, fp_out, seed_base, max_iter):
         model.load_state_dict(torch.load(fp_out + 'seed ' + str(i + seed_base) + '.pt'))
 
         actuals, preds, incurreds, ocls = get_preds_actuals(model, test_set, hp_comb, True)
+
+        # apply bias correction
+        if val_set.target_col == 'log_claim_size' or val_set.target_col == 'log_true_ocl':
+            (actuals_validation, 
+             preds_validation, 
+             incurreds_validation, 
+             ocls_validation) = get_preds_actuals(model, val_set, hp_comb, True)
+
+            preds = preds * bias_correction_factor(preds_validation, actuals_validation)
             
         vsInc = get_vsInc(actuals, preds, incurreds)    
         weighted_vsInc_claimsize = get_weighted_vsInc_claimsize(actuals, preds, incurreds)
