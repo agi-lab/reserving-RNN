@@ -259,6 +259,7 @@ class ClaimsDataset(Dataset):
 
         # creating new column for target output (so that any scalings applied to the target column are not applied to the original data)
         self.index['target'] = self.index[self.target_col]
+        self.index['incurred_copy'] = self.index['latest_incurred']
 
         if self.transform_inputs:
 
@@ -275,6 +276,7 @@ class ClaimsDataset(Dataset):
 
                 if self.include_incurreds:
                     self.index['total_revisions'] = np.log(self.index['total_revisions'] + 1)
+                    self.index['incurred_copy'] = np.log(self.index['incurred_copy'] + 1)
 
             # standardise inputs and output
             if self.scaler is None:
@@ -284,6 +286,7 @@ class ClaimsDataset(Dataset):
                                'ocl': StandardScaler(), 
                                'dev_time': StandardScaler(), 
                                'cal_time': StandardScaler(),
+                               # can't scale the two below because it will interfere with analysis by time
                                #'pred_time': StandardScaler(),
                                #'acc_quarter': StandardScaler(),
                                'num_payments': StandardScaler(),
@@ -294,7 +297,8 @@ class ClaimsDataset(Dataset):
                                'mean_revisions': StandardScaler(),
                                'max_revision': StandardScaler(),
                                'total_revisions': StandardScaler(),
-                               'prop_upward_revisions': StandardScaler()}
+                               'prop_upward_revisions': StandardScaler(),
+                               'incurred_copy': StandardScaler(),}
 
                 for key in self.scaler.keys():
                     if key in self.set.columns:
@@ -388,6 +392,7 @@ class ClaimsDataset(Dataset):
                 max_revision = self.index['max_revision'][index]
                 total_revisions = self.index['total_revisions'][index]
                 prop_upward_revisions = self.index['prop_upward_revisions'][index]
+                incurred_copy = self.index['incurred_copy'][index]
 
             if self.include_incurreds and self.include_covariates:
 
@@ -415,7 +420,7 @@ class ClaimsDataset(Dataset):
                         num_revisions, mean_revisions, max_revision, total_revisions, prop_upward_revisions, 
                         legal_rep, injury_severity, claimant_age,
                         target, claim_size, latest_incurred, true_ocl, real_index, 
-                        claim_no)
+                        claim_no, incurred_copy)
             
             elif self.include_incurreds and not self.include_covariates:
 
@@ -439,7 +444,7 @@ class ClaimsDataset(Dataset):
                 return (pred_time, dev_quarter, acc_quarter, num_payments, mean_payments, vco_payments, max_payment, 
                         num_revisions, mean_revisions, max_revision, total_revisions, prop_upward_revisions,
                         target, claim_size, latest_incurred, true_ocl, real_index, 
-                        claim_no)
+                        claim_no, incurred_copy)
             
             elif not self.include_incurreds and self.include_covariates:
 
@@ -852,7 +857,7 @@ def train_network(model, train_data, hp_comb, verbose=True,
                     vco_paymentss, max_payments, num_revisionss, mean_revisionss, max_revisions, 
                     total_revisionss, prop_upward_revisionss, legal_reps, 
                     injury_severities, claimant_ages, targets, claim_sizes, 
-                    latest_incurreds, true_ocls, indexes, claim_nos) = batch
+                    latest_incurreds, true_ocls, indexes, claim_nos, incurred_copys) = batch
 
                     pred_times = pred_times.to(device).float()
                     dev_quarters = dev_quarters.to(device).float()
@@ -873,12 +878,13 @@ def train_network(model, train_data, hp_comb, verbose=True,
                     claim_sizes = claim_sizes.to(device).float()
                     latest_incurreds = latest_incurreds.to(device).float()
                     true_ocls = true_ocls.to(device).float()
+                    incurred_copys = incurred_copys.to(device).float()
 
                     #print(f'type of pred_times: {type(pred_times)}')
                     #print(f'dimension of pred_times: {pred_times.shape}')
 
                     packed_extra = torch.stack((pred_times, dev_quarters, acc_quarters, num_paymentss, mean_paymentss,
-                                    vco_paymentss, max_payments, latest_incurreds, num_revisionss, mean_revisionss, max_revisions,
+                                    vco_paymentss, max_payments, incurred_copys, num_revisionss, mean_revisionss, max_revisions,
                                     total_revisionss, prop_upward_revisionss, legal_reps,
                                     injury_severities, claimant_ages), dim=1).to(device)
 
@@ -888,7 +894,7 @@ def train_network(model, train_data, hp_comb, verbose=True,
                     (pred_times, dev_quarters, acc_quarters, num_paymentss, mean_paymentss, 
                     vco_paymentss, max_payments, num_revisionss, mean_revisionss, max_revisions, 
                     total_revisionss, prop_upward_revisionss, targets, claim_sizes, 
-                    latest_incurreds, true_ocls, indexes, claim_nos) = batch
+                    latest_incurreds, true_ocls, indexes, claim_nos, incurred_copys) = batch
 
                     pred_times = pred_times.to(device).float()
                     dev_quarters = dev_quarters.to(device).float()
@@ -906,9 +912,10 @@ def train_network(model, train_data, hp_comb, verbose=True,
                     claim_sizes = claim_sizes.to(device).float()
                     latest_incurreds = latest_incurreds.to(device).float()
                     true_ocls = true_ocls.to(device).float()
+                    incurred_copys = incurred_copys.to(device).float()
 
                     packed_extra = torch.stack((pred_times, dev_quarters, acc_quarters, num_paymentss, mean_paymentss,
-                                    vco_paymentss, max_payments, latest_incurreds, num_revisionss, mean_revisionss, max_revisions,
+                                    vco_paymentss, max_payments, incurred_copys, num_revisionss, mean_revisionss, max_revisions,
                                     total_revisionss, prop_upward_revisionss), dim=1).to(device)
 
                 elif not hp_comb['include_incurreds'] and hp_comb['include_covariates']:
@@ -1287,7 +1294,7 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
                     vco_paymentss, max_payments, num_revisionss, mean_revisionss, max_revisions, 
                     total_revisionss, prop_upward_revisionss, legal_reps, 
                     injury_severities, claimant_ages, targets, claim_sizes, 
-                    latest_incurreds, true_ocls, indexes, claim_nos) = batch
+                    latest_incurreds, true_ocls, indexes, claim_nos, incurred_copys) = batch
 
                     pred_times = pred_times.to(device).float()
                     dev_quarters = dev_quarters.to(device).float()
@@ -1308,9 +1315,10 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
                     claim_sizes = claim_sizes.to(device).float()
                     latest_incurreds = latest_incurreds.to(device).float()
                     true_ocls = true_ocls.to(device).float()
+                    incurred_copys = incurred_copys.to(device).float()
 
                     packed_extra = torch.stack((pred_times, dev_quarters, acc_quarters, num_paymentss, mean_paymentss,
-                                    vco_paymentss, max_payments, latest_incurreds, num_revisionss, mean_revisionss, max_revisions,
+                                    vco_paymentss, max_payments, incurred_copys, num_revisionss, mean_revisionss, max_revisions,
                                     total_revisionss, prop_upward_revisionss, legal_reps,
                                     injury_severities, claimant_ages), dim=1).to(device)
 
@@ -1318,7 +1326,7 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
                     (pred_times, dev_quarters, acc_quarters, num_paymentss, mean_paymentss, 
                     vco_paymentss, max_payments, num_revisionss, mean_revisionss, max_revisions, 
                     total_revisionss, prop_upward_revisionss, targets, claim_sizes,
-                    latest_incurreds, true_ocls, indexes, claim_nos) = batch
+                    latest_incurreds, true_ocls, indexes, claim_nos, incurred_copys) = batch
 
                     pred_times = pred_times.to(device).float()
                     dev_quarters = dev_quarters.to(device).float()
@@ -1336,9 +1344,10 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
                     claim_sizes = claim_sizes.to(device).float()
                     latest_incurreds = latest_incurreds.to(device).float()
                     true_ocls = true_ocls.to(device).float()
+                    incurred_copys = incurred_copys.to(device).float()
 
                     packed_extra = torch.stack((pred_times, dev_quarters, acc_quarters, num_paymentss, mean_paymentss,
-                                    vco_paymentss, max_payments, latest_incurreds, num_revisionss, mean_revisionss, max_revisions,
+                                    vco_paymentss, max_payments, incurred_copys, num_revisionss, mean_revisionss, max_revisions,
                                     total_revisionss, prop_upward_revisionss), dim=1).to(device)
 
                 elif not hp_comb['include_incurreds'] and hp_comb['include_covariates']:
@@ -3587,6 +3596,17 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     plt.xticks([0, 1, 2], [name_model1, name_model2, 'Incurreds'])
     plt.ylabel('OCL error (%)')
     plt.title('OCL errors at valuation date')
+    plt.show()
+
+    # Boxplots of OCL errors at valuation date (excl. outliers)
+    sns.boxplot(data=[results_model1['ocl_error_preds_val'], 
+                      results_model2['ocl_error_preds_val'],
+                      results_model1['ocl_error_incurreds_val']], showfliers=False)
+    plt.axhline(0, color='blue', linestyle='dashed', linewidth=2)
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.xticks([0, 1, 2], [name_model1, name_model2, 'Incurreds'])
+    plt.ylabel('OCL error (%)')
+    plt.title('OCL errors at valuation date (excl. outliers)')
     plt.show()
 
     # Boxplots of MALE and MSLE
