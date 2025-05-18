@@ -674,8 +674,15 @@ class ClaimsFNN(nn.Module):
         """
         super(ClaimsFNN, self).__init__()
 
-        # 3 variables for transaction times, 4 for payments, 6 for revisions, 3 for covariates
-        self.num_features = 7 + 6 * include_incurreds + 3 * include_covariates
+        self.include_covariates = include_covariates
+
+        if self.include_covariates:
+            self.embedding_dim = 2
+            self.embedding_sev = nn.Embedding(6, self.embedding_dim) # 6 possible injury severities, output 2 dimensions
+            self.embedding_age = nn.Embedding(5, self.embedding_dim) # 5 possible ages, output 2 dimensions
+
+        # 3 variables for transaction times, 4 for payments, 6 for revisions, 1 raw covariate, 2 covariate embeddings
+        self.num_features = 7 + 6 * include_incurreds + include_covariates * (1 + 2 * self.embedding_dim)
         self.final_activation = final_activation
         self.normalisation = normalisation
 
@@ -709,12 +716,21 @@ class ClaimsFNN(nn.Module):
         Returns:
             the predicted outputs (shape: (n,))
         """
+        if self.include_covariates:
+            sev_embed = self.embedding_sev(x[:, -2].long())
+            age_embed = self.embedding_age(x[:, -1].long())
+
+            out = torch.cat((x[:, :-2], sev_embed, age_embed), 1)
+
+        else:
+            out = x
+
         if self.final_activation == 'exponential':
-            out = torch.exp(self.nn_output_layer(x).squeeze(-1)) # * x[:, -1].squeeze(-1)
+            out = torch.exp(self.nn_output_layer(out).squeeze(-1)) # * x[:, -1].squeeze(-1)
         elif self.final_activation == 'softplus':
-            out = F.softplus(self.nn_output_layer(x).squeeze(-1))
+            out = F.softplus(self.nn_output_layer(out).squeeze(-1))
         elif self.final_activation == 'linear':
-            out = self.nn_output_layer(x).squeeze(-1)
+            out = self.nn_output_layer(out).squeeze(-1)
         else:
             raise ValueError(f"Unsupported final activation function: {self.final_activation}")
         assert out.shape == torch.Size([x.shape[0]])
