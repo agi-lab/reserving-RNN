@@ -19,10 +19,7 @@ data_manipulation <- function(fp_in, fp_out, fp_out_noInc) {
   
   # Dropping first column
   data[, V1 := NULL]
-  
-  # TESTING: REMOVING REPORTED LARGE CLAIMS LIKE SCHWAB SCHNEIDER
-  #data <- data[!(claim_no %in% data[txn_delay == 0 & incurred >= 500000, unique(claim_no)])]
-  
+
   # Adding duration and start time columns, and rounding them
   data[, ':=' (rept_quarter = ceiling(min(txn_time)),
                finalised_quarter = ceiling(max(txn_time))), keyby=claim_no]
@@ -38,6 +35,11 @@ data_manipulation <- function(fp_in, fp_out, fp_out_noInc) {
   data[, payment := payments]
   
   
+  # plotting payments over time to check for inflation assumptions for relevant complexity
+  # plot(data[OCL == 0, mean(cumpaid), keyby=acc_quarter])
+  # plot(data[txn_time > 1 & txn_time < 40 & payment > 0, mean(payment), keyby=round(txn_time)])
+  
+  
   # Adding incremental case estimate revisions to data
   revisions <- data[, diff(incurred)]
   revisions <- c(0, revisions)
@@ -47,6 +49,9 @@ data_manipulation <- function(fp_in, fp_out, fp_out_noInc) {
   
   data[revision == 0, .N]
   data[revision > 0 & txn_delay != 0, .N]
+  
+  # increasing claim_size to account for inflation
+  data[, claim_size := max(cumpaid), keyby=claim_no]
   
   
   # Creating index data
@@ -147,7 +152,7 @@ data_manipulation <- function(fp_in, fp_out, fp_out_noInc) {
   index_data[is.na(index_data)] <- 0
   
   ### TRAIN TEST SPLIT ######################################################
-  val_start_quarter = 34
+  val_start_quarter = 36
   test_start_quarter = 40
 
   # Valuation date is 40
@@ -156,47 +161,13 @@ data_manipulation <- function(fp_in, fp_out, fp_out_noInc) {
   test_index <- index_data[finalised_quarter > test_start_quarter]
 
   # reorganise some observations from training and val sets (moving 20% of val -> train for now)
-  val_to_train_prop = 0.5
+  val_to_train_prop = 0.2
   train_claims <- train_index[, unique(claim_no)]
   val_claims <- val_index[, unique(claim_no)]
   claims_to_move <- sample(val_claims, val_to_train_prop * length(val_claims))
   
   val_index <- val_index[!(claim_no %in% claims_to_move)]
   train_index <- index_data[claim_no %in% c(train_claims, claims_to_move)]
-  
-  # train_index[, length(unique(claim_no))]
-  # val_index[, length(unique(claim_no))]
-  # train_index[, length(unique(claim_no))] / (train_index[, length(unique(claim_no))] + val_index[, length(unique(claim_no))])
-  
-  # train_index[, length(unique(claim_no))]
-  # val_index[, length(unique(claim_no))]
-  # 
-  # train_index[, summary(finalised_quarter - rept_quarter)]
-  # val_index[, summary(finalised_quarter - rept_quarter)]
-  
-  # TESTING: removing all observations in test sets that occur before the final observation in the training set
-  #val_index <- val_index[pred_time >= val_start_quarter]
-  #test_index <- test_index[pred_time >= test_start_quarter]
-  
-  
-  # TESTING: randomly splitting by claim (i.e. not by time)
-  # train_prop = 0.6
-  # val_prop = 0.2
-  # test_prop = 0.2
-  # 
-  # all_claims <- 1:max(index_data$claim_no)
-  # 
-  # train_claims <- sample(all_claims, train_prop * length(all_claims), replace = FALSE)
-  # val_claims <- all_claims[!(all_claims %in% train_claims)]
-  # 
-  # test_claims <- sample(val_claims, test_prop / (val_prop + test_prop) * length(val_claims), replace = FALSE)
-  # val_claims <- val_claims[!(val_claims %in% test_claims)]
-  # 
-  # train_index <- index_data[claim_no %in% train_claims]
-  # val_index <- index_data[claim_no %in% val_claims]
-  # test_index <- index_data[claim_no %in% test_claims]
-  
-  
   
   train_set <- databoxes[index %in% train_index[, index]]
   val_set <- databoxes[index %in% val_index[, index]]
@@ -244,62 +215,15 @@ data_manipulation <- function(fp_in, fp_out, fp_out_noInc) {
 
 ################################################################################
 
-# fp_in = './Datasets/R Outputs/small sample.csv'
-# fp_out = './Datasets/Python Inputs/small sample WithInc/'
-# fp_out_noInc = './Datasets/Python Inputs/small sample NoInc/'
-
-
-# fp_in = './Datasets/R Outputs/complexity 1.csv'
-# fp_out = './Datasets/Python Inputs/complexity 1 WithInc/'
-# fp_out_noInc = './Datasets/Python Inputs/complexity 1 NoInc/'
-
-fp_in = './Datasets/R Outputs/data_noInf_cov_TRUE_seed_20201006.csv'
-fp_out = './Datasets/Python Inputs/noInf_WithInc_seed_20201006/'
-fp_out_noInc = './Datasets/Python Inputs/noInf_NoInc_seed_20201006/'
-
-
-data_manipulation(fp_in, fp_out, fp_out_noInc)
-
-
-# creating multiple datasets
-max_iter = 20
-seed_base = 2024
-
-fp_R = './Datasets/R Outputs/data_noInf_cov_TRUE_seed_'
-fp_py_WithInc = './Datasets/Python Inputs/noInf_WithInc_seed_'
-fp_py_noInc = './Datasets/Python Inputs/noInf_NoInc_seed_'
-
-for (i in 1:max_iter) {
-  fp_in = paste0(fp_R, i + seed_base, '.csv')
-  fp_out = paste0(fp_py_WithInc, i + seed_base, '/')
-  fp_out_noInc = paste0(fp_py_noInc, i + seed_base, '/')
-
-  print(paste0('Seed: ', i + seed_base))
-  #print(paste0('fp_in: ', fp_in))
-  #print(paste0('fp out: ', fp_out))
-
-  data_manipulation(fp_in, fp_out, fp_out_noInc)
-}
-print("Done!")
-
-
-# Large dataset
-fp_in = './Datasets/R Outputs/data_noInf_cov_TRUE_seed_20250101.csv'
-fp_out = './Datasets/Python Inputs/noInf_WithInc_seed_20250101/'
-fp_out_noInc = './Datasets/Python Inputs/noInf_NoInc_seed_20250101/'
-
-
-data_manipulation(fp_in, fp_out, fp_out_noInc)
-
-# creating multiple large datasets
+# Large complexity 2 datasets
 max_iter = 5
-seed_base = 100
+seed_base = 200
 
 fp_R = './Datasets/R Outputs/data_noInf_cov_TRUE_seed_'
 fp_py_WithInc = './Datasets/Python Inputs/noInf_WithInc_seed_'
 fp_py_noInc = './Datasets/Python Inputs/noInf_NoInc_seed_'
 
-for (i in 1:max_iter) {
+for (i in 0:max_iter) {
   fp_in = paste0(fp_R, i + seed_base, '.csv')
   fp_out = paste0(fp_py_WithInc, i + seed_base, '/')
   fp_out_noInc = paste0(fp_py_noInc, i + seed_base, '/')
@@ -313,10 +237,27 @@ for (i in 1:max_iter) {
 print("Done!")
 
 
-# Larger dataset
-fp_in = './Datasets/R Outputs/data_noInf_cov_TRUE_seed_300000.csv'
-fp_out = './Datasets/Python Inputs/noInf_WithInc_seed_300000/'
-fp_out_noInc = './Datasets/Python Inputs/noInf_NoInc_seed_300000/'
+
+# Large complexity 5 datasets
+max_iter = 5
+seed_base = 200
+
+fp_R = './Datasets/R Outputs/data_noInf_cov_TRUE_seed_'
+fp_py_WithInc = './Datasets/Python Inputs/noInf_WithInc_seed_'
+fp_py_noInc = './Datasets/Python Inputs/noInf_NoInc_seed_'
+
+for (i in 0:max_iter) {
+  fp_in = paste0(fp_R, i + seed_base, '.csv')
+  fp_out = paste0(fp_py_WithInc, i + seed_base, '/')
+  fp_out_noInc = paste0(fp_py_noInc, i + seed_base, '/')
+  
+  print(paste0('Seed: ', i + seed_base))
+  #print(paste0('fp_in: ', fp_in))
+  #print(paste0('fp out: ', fp_out))
+  
+  data_manipulation(fp_in, fp_out, fp_out_noInc)
+}
+print("Done!")
 
 
-data_manipulation(fp_in, fp_out, fp_out_noInc)
+fp_in = './Datasets/R Outputs/data_noInf_cov_TRUE_seed_500.csv'
