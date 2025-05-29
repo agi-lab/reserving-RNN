@@ -390,12 +390,12 @@ class ClaimsDataset(Dataset):
 
             # Return padded data
             if self.include_covariates:
-                return (F.pad(databox.float(), (0,0,0,50-nrows)), 
+                return (F.pad(databox.float(), (0,0,0,70-nrows)), # 70 is arbitrarily hard-coded, increase if you run into errors with mismatching dimensions
                         target, claim_size, latest_incurred, true_ocl, real_index, 
                         claim_no, pred_time_copy, acc_quarter_copy, nrows, legal_rep, injury_severity, claimant_age)
 
             else:
-                return (F.pad(databox.float(), (0,0,0,50-nrows)), 
+                return (F.pad(databox.float(), (0,0,0,70-nrows)), 
                         target, claim_size, latest_incurred, true_ocl, real_index, 
                         claim_no, pred_time_copy, acc_quarter_copy, nrows)
 
@@ -549,7 +549,9 @@ class ClaimsRNN(nn.Module):
                 out, ht = rnn(out)  # RNN output
 
                 if i < self.nLayers - 1:
+                    #print(f'Layer {i} output shape: {out.batch_sizes.size(0)}')
                     out, nrows = pad_packed_sequence(out, batch_first=True)
+                    #print(f'Layer {i} padded output shape: {out.shape}')
                     out = self.layer_norms_rnn[i](out)
                     out = self.dropout_layer(out)
                     out = pack_padded_sequence(out, nrows, batch_first=True, enforce_sorted=False)
