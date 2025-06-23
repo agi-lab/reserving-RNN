@@ -148,11 +148,6 @@ def initialise_weights(model):
             nn.init.kaiming_normal_(param, mode='fan_in', nonlinearity='relu')
         elif 'bias' in name:  # Bias terms
             nn.init.zeros_(param)
-            
-            # Special handling for LSTM forget gate bias
-            if 'lstm' in name.lower() or 'gru' in name.lower():
-                hidden_size = param.shape[0] // 4  # Divide into gates for LSTM
-                param.data[hidden_size:2 * hidden_size] = 1.0  # Forget gate bias
 
     # Handle all modules explicitly
     for module in model.modules():
@@ -170,6 +165,22 @@ def initialise_weights(model):
                 nn.init.ones_(module.weight)
             if module.bias is not None:  # Beta
                 nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.LSTM):
+            for name, param in module.named_parameters():
+                if 'bias' in name:
+                    # LSTM: [input, forget, cell, output]
+                    bias_size = param.size(0)
+                    gate_size = bias_size // 4
+                    with torch.no_grad():
+                        param[gate_size:2*gate_size].fill_(1.0)  # forget gate
+        elif isinstance(module, nn.GRU):
+            for name, param in module.named_parameters():
+                if 'bias' in name:
+                    # GRU: [reset, update, new]
+                    bias_size = param.size(0)
+                    gate_size = bias_size // 3
+                    with torch.no_grad():
+                        param[gate_size:2*gate_size].fill_(1.0)  # update gate (or choose as needed)
 
 def create_grid(target_cols, criterions, types, output_layers, 
                 nOuts, epochss, nHiddens, nLayerss, patiences, batch_sizes, 
@@ -642,8 +653,6 @@ class ClaimsFNN(nn.Module):
                 layers.append(nn.BatchNorm1d(nHidden))
                 layers.append(nn.ReLU())
                 layers.append(nn.Dropout(dropout))
-
-            layers.append(nn.BatchNorm1d(nHidden))
 
         else:
             layers = [nn.Linear(self.num_features, nHidden), nn.ReLU(), nn.Dropout(dropout)]
