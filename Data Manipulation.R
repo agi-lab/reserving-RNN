@@ -68,8 +68,8 @@ data_manipulation <- function(fp_in, fp_out, fp_out_noInc) {
   # when using nested data table in condition, need column names to be different
   setnames(data, "claim_no", "claim_number")
   
-  index_data[, ':=' (incurred = data[claim_number == claim_no & txn_time < pred_time, incurred[length(incurred)]],
-                     cumpaid = data[claim_number == claim_no & txn_time < pred_time, cumpaid[length(cumpaid)]]), keyby=.(claim_no, pred_time)]
+  index_data[, ':=' (incurred = data[claim_number == claim_no & txn_time <= pred_time, incurred[length(incurred)]],
+                     cumpaid = data[claim_number == claim_no & txn_time <= pred_time, cumpaid[length(cumpaid)]]), keyby=.(claim_no, pred_time)]
   
   # having $1 discrepancy is ok due to rounding 
   #View(index_data[incurred != OCL + cumpaid, .(claim_no, incurred, OCL, cumpaid, OCL + cumpaid)])
@@ -84,7 +84,7 @@ data_manipulation <- function(fp_in, fp_out, fp_out_noInc) {
   
   
   # Creating databoxes (i.e. 'set' data)
-  databoxes <- index_data[, data[claim_number == claim_no & txn_time < pred_time, .(txn_time, txn_delay, cumpaid, OCL, txn_type, payment, revision)], keyby = .(index, claim_no, pred_time)]
+  databoxes <- index_data[, data[claim_number == claim_no & txn_time <= pred_time, .(txn_time, txn_delay, cumpaid, OCL, txn_type, payment, revision)], keyby = .(index, claim_no, pred_time)]
   
   
   # renaming columns
@@ -163,6 +163,7 @@ data_manipulation <- function(fp_in, fp_out, fp_out_noInc) {
   # test_index <- index_data[finalised_quarter > test_start_quarter]
   # 
   # # reorganise some observations from training and val sets (moving 20% of val -> train for now)
+  # set.seed(1)
   # val_to_train_prop = 0.2
   # train_claims <- train_index[, unique(claim_no)]
   # val_claims <- val_index[, unique(claim_no)]
@@ -172,6 +173,7 @@ data_manipulation <- function(fp_in, fp_out, fp_out_noInc) {
   # train_index <- index_data[claim_no %in% c(train_claims, claims_to_move)]
   
   # 'random' split
+  set.seed(1)
   train_prop = 0.6
   val_prop = 0.2
   test_prop = 0.2
@@ -261,8 +263,8 @@ print("Done!")
 
 
 # Large complexity 5 datasets
-max_iter = 8
-seed_base = 542
+max_iter = 0
+seed_base = 503
 
 fp_R = './Datasets/R Outputs/data_noInf_cov_TRUE_seed_'
 # fp_py_WithInc = './Datasets/Python Inputs/Split by time/noInf_WithInc_seed_'
