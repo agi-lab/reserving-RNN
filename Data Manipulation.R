@@ -152,22 +152,42 @@ data_manipulation <- function(fp_in, fp_out, fp_out_noInc) {
   index_data[is.na(index_data)] <- 0
   
   ### TRAIN TEST SPLIT ######################################################
-  val_start_quarter = 36
-  test_start_quarter = 40
-
-  # Valuation date is 40
-  train_index <- index_data[finalised_quarter <= val_start_quarter]
-  val_index <- index_data[finalised_quarter > val_start_quarter & finalised_quarter <= test_start_quarter]
-  test_index <- index_data[finalised_quarter > test_start_quarter]
-
-  # reorganise some observations from training and val sets (moving 20% of val -> train for now)
-  val_to_train_prop = 0.2
-  train_claims <- train_index[, unique(claim_no)]
-  val_claims <- val_index[, unique(claim_no)]
-  claims_to_move <- sample(val_claims, val_to_train_prop * length(val_claims))
   
-  val_index <- val_index[!(claim_no %in% claims_to_move)]
-  train_index <- index_data[claim_no %in% c(train_claims, claims_to_move)]
+  # 'realistic split'
+  # val_start_quarter = 36
+  # test_start_quarter = 40
+  # 
+  # # Valuation date is 40
+  # train_index <- index_data[finalised_quarter <= val_start_quarter]
+  # val_index <- index_data[finalised_quarter > val_start_quarter & finalised_quarter <= test_start_quarter]
+  # test_index <- index_data[finalised_quarter > test_start_quarter]
+  # 
+  # # reorganise some observations from training and val sets (moving 20% of val -> train for now)
+  # val_to_train_prop = 0.2
+  # train_claims <- train_index[, unique(claim_no)]
+  # val_claims <- val_index[, unique(claim_no)]
+  # claims_to_move <- sample(val_claims, val_to_train_prop * length(val_claims))
+  # 
+  # val_index <- val_index[!(claim_no %in% claims_to_move)]
+  # train_index <- index_data[claim_no %in% c(train_claims, claims_to_move)]
+  
+  # 'random' split
+  train_prop = 0.6
+  val_prop = 0.2
+  test_prop = 0.2
+
+  all_claims <- 1:max(index_data$claim_no)
+
+  train_claims <- sample(all_claims, train_prop * length(all_claims), replace = FALSE)
+  val_claims <- all_claims[!(all_claims %in% train_claims)]
+
+  test_claims <- sample(val_claims, test_prop / (val_prop + test_prop) * length(val_claims), replace = FALSE)
+  val_claims <- val_claims[!(val_claims %in% test_claims)]
+
+  train_index <- index_data[claim_no %in% train_claims]
+  val_index <- index_data[claim_no %in% val_claims]
+  test_index <- index_data[claim_no %in% test_claims]
+  
   
   train_set <- databoxes[index %in% train_index[, index]]
   val_set <- databoxes[index %in% val_index[, index]]
@@ -220,8 +240,10 @@ max_iter = 5
 seed_base = 200
 
 fp_R = './Datasets/R Outputs/data_noInf_cov_TRUE_seed_'
-fp_py_WithInc = './Datasets/Python Inputs/noInf_WithInc_seed_'
-fp_py_noInc = './Datasets/Python Inputs/noInf_NoInc_seed_'
+# fp_py_WithInc = './Datasets/Python Inputs/Split by time/noInf_WithInc_seed_'
+# fp_py_noInc = './Datasets/Python Inputs/Split by time/noInf_NoInc_seed_'
+fp_py_WithInc = './Datasets/Python Inputs/Random split/noInf_WithInc_seed_'
+fp_py_noInc = './Datasets/Python Inputs/Random split/noInf_NoInc_seed_'
 
 for (i in 0:max_iter) {
   fp_in = paste0(fp_R, i + seed_base, '.csv')
@@ -239,12 +261,14 @@ print("Done!")
 
 
 # Large complexity 5 datasets
-max_iter = 5
-seed_base = 200
+max_iter = 8
+seed_base = 542
 
 fp_R = './Datasets/R Outputs/data_noInf_cov_TRUE_seed_'
-fp_py_WithInc = './Datasets/Python Inputs/noInf_WithInc_seed_'
-fp_py_noInc = './Datasets/Python Inputs/noInf_NoInc_seed_'
+# fp_py_WithInc = './Datasets/Python Inputs/Split by time/noInf_WithInc_seed_'
+# fp_py_noInc = './Datasets/Python Inputs/Split by time/noInf_NoInc_seed_'
+fp_py_WithInc = './Datasets/Python Inputs/Random split/noInf_WithInc_seed_'
+fp_py_noInc = './Datasets/Python Inputs/Random split/noInf_NoInc_seed_'
 
 for (i in 0:max_iter) {
   fp_in = paste0(fp_R, i + seed_base, '.csv')
@@ -260,4 +284,8 @@ for (i in 0:max_iter) {
 print("Done!")
 
 
-fp_in = './Datasets/R Outputs/data_noInf_cov_TRUE_seed_500.csv'
+#fp_in = './Datasets/R Outputs/data_noInf_cov_TRUE_seed_500.csv'
+
+
+getDTthreads(verbose = TRUE)
+setDTthreads(threads = 0)
