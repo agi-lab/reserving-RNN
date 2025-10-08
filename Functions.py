@@ -2046,8 +2046,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             if name_model1 is None and name_model2 is None:
                 if include_incurreds:
                     plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'Incurreds'])
-                else:
-                    plt.legend([bp_preds_model1["boxes"][0]], ['Predictions'])
+
             else:
                 if include_incurreds:
                     plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'Incurreds'])
@@ -2087,8 +2086,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             if name_model1 is None and name_model2 is None:
                 if include_incurreds:
                     plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'Incurreds'])
-                else:
-                    plt.legend([bp_preds_model1["boxes"][0]], ['Predictions'])
+
             else:
                 if include_incurreds:
                     plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'Incurreds'])
@@ -2131,8 +2129,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             if name_model1 is None and name_model2 is None:
                 if include_incurreds:
                     plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'Incurreds'])
-                else:
-                    plt.legend([bp_preds_model1["boxes"][0]], ['Predictions'])
+
             else:
                 if include_incurreds:
                     plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'Incurreds'])
@@ -2172,8 +2169,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             if name_model1 is None and name_model2 is None:
                 if include_incurreds:
                     plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'Incurreds'])
-                else:
-                    plt.legend([bp_preds_model1["boxes"][0]], ['Predictions'])
+
             else:
                 if include_incurreds:
                     plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'Incurreds'])
