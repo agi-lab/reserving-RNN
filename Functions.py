@@ -356,6 +356,13 @@ class ClaimsDataset(Dataset):
                     else:
                         warnings.warn(f'{key} not found in either set or index dataframes')
 
+        # removing latest 4/8 accident quarters from datasets to see what plots would look like without them
+        # this is NOT intended to be a permanent change, just for visualisation purposes
+        # this code appears at the end of the initialisation so that it does not interfere with the scaling above
+        # self.index = self.index[self.index['acc_quarter'] <= 36]
+        # self.set = self.set[self.set['index'].isin(self.index['index'])]
+        
+
     def __len__(self):
         return len(self.index)
 
@@ -3109,12 +3116,12 @@ def test_multiple_initialisations(fp_in, fp_out, iterations, verbose=True):
                                                         incurreds_val,
                                                         ocls_val)
         
-        # MALE and MSLE
-        MALE_preds = MeanAbsoluteLogError()(preds, actuals)
-        MSLE_preds = MeanSquaredLogError()(preds, actuals)
+        # MALE and MSLE (in terms of OCL instead of ultimate claim size)
+        MALE_preds = MeanAbsoluteLogError()(preds - paids, ocls)
+        MSLE_preds = MeanSquaredLogError()(preds - paids, ocls)
 
-        MALE_preds_val = MeanAbsoluteLogError()(preds_val, actuals_val)
-        MSLE_preds_val = MeanSquaredLogError()(preds_val, actuals_val)
+        MALE_preds_val = MeanAbsoluteLogError()(preds_val - paids_val, ocls_val)
+        MSLE_preds_val = MeanSquaredLogError()(preds_val - paids_val, ocls_val)
 
         results.append({'preds': preds,
                         'preds_val': preds_val,
@@ -3371,6 +3378,8 @@ def results_multiple_datasets(fp_py, fp_out, seed_base, max_iter):
 
         actuals, preds, incurreds, ocls = get_preds_actuals(model, test_set, hp_comb, True)
 
+        paids = actuals - ocls
+
         # apply bias correction
         if val_set.target_col == 'log_claim_size' or val_set.target_col == 'log_true_ocl':
             (actuals_validation, 
@@ -3393,6 +3402,8 @@ def results_multiple_datasets(fp_py, fp_out, seed_base, max_iter):
         incurreds_val = incurreds[test_set.index['pred_time'] == val_date]
         ocls_val = ocls[test_set.index['pred_time'] == val_date]
 
+        paids_val = actuals_val - ocls_val
+
         aggregate_preds_val = preds_val.sum()
         aggregate_actuals_val = actuals_val.sum()
         aggregate_incurreds_val = incurreds_val.sum()
@@ -3409,18 +3420,18 @@ def results_multiple_datasets(fp_py, fp_out, seed_base, max_iter):
         weighted_vsInc_claimsize_val = round_threshold(get_weighted_vsInc_claimsize(actuals_val, preds_val, incurreds_val))
         weighted_vsInc_ocl_val = round_threshold(get_weighted_vsInc_ocl(actuals_val, preds_val, incurreds_val, ocls_val))
 
-        # MALE and MSLE
-        MALE_preds = MeanAbsoluteLogError()(preds, actuals)
-        MSLE_preds = MeanSquaredLogError()(preds, actuals)
+        # MALE and MSLE (in terms of OCL instead of ultimate claim size)
+        MALE_preds = MeanAbsoluteLogError()(preds - paids, ocls)
+        MSLE_preds = MeanSquaredLogError()(preds - paids, ocls)
 
-        MALE_preds_val = MeanAbsoluteLogError()(preds_val, actuals_val)
-        MSLE_preds_val = MeanSquaredLogError()(preds_val, actuals_val)
+        MALE_preds_val = MeanAbsoluteLogError()(preds_val - paids_val, ocls_val)
+        MSLE_preds_val = MeanSquaredLogError()(preds_val - paids_val, ocls_val)
         
-        MALE_incurreds = MeanAbsoluteLogError()(incurreds, actuals)
-        MSLE_incurreds = MeanSquaredLogError()(incurreds, actuals)
+        MALE_incurreds = MeanAbsoluteLogError()(incurreds - paids, ocls)
+        MSLE_incurreds = MeanSquaredLogError()(incurreds - paids, ocls)
 
-        MALE_incurreds_val = MeanAbsoluteLogError()(incurreds_val, actuals_val)
-        MSLE_incurreds_val = MeanSquaredLogError()(incurreds_val, actuals_val)
+        MALE_incurreds_val = MeanAbsoluteLogError()(incurreds_val - paids_val, ocls_val)
+        MSLE_incurreds_val = MeanSquaredLogError()(incurreds_val - paids_val, ocls_val)
 
         results.append({'Seed': i + seed_base, 
                         'test_set_index': test_set.index,
