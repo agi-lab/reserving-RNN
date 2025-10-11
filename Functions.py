@@ -80,20 +80,32 @@ class MeanAbsoluteLogError(nn.Module):
         super(MeanAbsoluteLogError, self).__init__()
 
     def forward(self, preds, actuals):
-        if torch.is_tensor(preds):
-            return torch.mean(torch.abs(torch.log(preds) - torch.log(actuals)))
+
+        # convert negative preds to 1 so that the log will be 0
+        # smallest true OCL is 16 (training set) 7000 (test set) so penalty will be severe as a test set metric
+        preds_copy = preds.copy()
+        preds_copy[preds_copy < 1] = 1
+
+        if torch.is_tensor(preds_copy):
+            return torch.mean(torch.abs(torch.log(preds_copy) - torch.log(actuals)))
         else:
-            return np.mean(np.abs(np.log(preds) - np.log(actuals)))
+            return np.mean(np.abs(np.log(preds_copy) - np.log(actuals)))
     
 class MeanSquaredLogError(nn.Module):
     def __init__(self):
         super(MeanSquaredLogError, self).__init__()
 
     def forward(self, preds, actuals):
-        if torch.is_tensor(preds):
-            return torch.mean(torch.square(torch.log(preds) - torch.log(actuals)))
+
+        # convert negative preds to 1 so that the log will be 0
+        # smallest true OCL is 16 (training set) 7000 (test set) so penalty will be severe as a test set metric
+        preds_copy = preds.copy()
+        preds_copy[preds_copy < 1] = 1
+
+        if torch.is_tensor(preds_copy):
+            return torch.mean(torch.square(torch.log(preds_copy) - torch.log(actuals)))
         else:
-            return np.mean(np.square(np.log(preds) - np.log(actuals)))
+            return np.mean(np.square(np.log(preds_copy) - np.log(actuals)))
     
 class MSLE_with_penalty(nn.Module):
     '''Testing a new loss function. Works the same as the regular MSE but adds 
