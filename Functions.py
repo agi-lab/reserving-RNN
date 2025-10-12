@@ -2125,9 +2125,39 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             plt.title('Aggregate OCLs (as proportion of actual)')
             plt.ylabel('Ratio')
 
-            plt.ylim([0, 2.5])
+            plt.ylim(0, 2.5)
 
             plt.show()
+
+            # Boxplot with incurreds only
+            if include_incurreds:
+                bp_incurreds = box_plot(ocl_incurreds_over_actuals_by_time, positions=times, median_colour='cyan', edge_colour='darkgreen', fill_colour='lightgreen')
+                plt.plot(times, [1] * len(times))
+                plt.plot(times, pred_cumulative_prop_by_time, color='black', alpha = 0.8)
+
+                plt.grid(axis='both', linestyle='--', alpha=0.7)
+
+                ticks = [int(time) for time in times if (time % 5 == 0 and len(times) < 50) 
+                        or (time % 10 == 0 and len(times) >= 50)]
+                plt.xticks(ticks, ticks)
+                
+                if time_str == 'pred_time':
+                    plt.xlabel('Calendar quarter')
+                elif time_str == 'dev_quarter':
+                    plt.xlabel('Quarters since notification')
+                elif time_str == 'rept_quarter':
+                    plt.xlabel('Reported quarter')
+                elif time_str == 'acc_quarter':
+                    plt.xlabel('Accident quarter')
+                else:
+                    raise ValueError('Invalid time_str')
+                
+                plt.title('Aggregate OCLs (as proportion of actual)')
+                plt.ylabel('Ratio')
+
+                plt.ylim(0, 2.5)
+
+                plt.show()
 
             # Boxplot with aggregate OCLs and transparency for overlapping boxes
             bp_preds_model1 = box_plot(results_model1['ocl_preds_over_actuals_by_time'], positions=times, median_colour='red', edge_colour='chocolate', fill_colour='bisque', alpha=0.5)
@@ -3476,7 +3506,7 @@ def results_multiple_datasets(fp_py, fp_out, seed_base, max_iter):
     results = pd.DataFrame(results)
     return results
 
-def plot_results_multiple_datasets(results):
+def plot_results_multiple_datasets(results, name_model1):
     # formatting data for graphs by time
     preds_matrix = results['preds'].tolist()
     actuals_matrix = results['actuals'].tolist()
@@ -3582,12 +3612,18 @@ def plot_results_multiple_datasets(results):
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.ylabel('weighted vsInc (OCL) (%) at valuation date')
     plt.title('weighted vsInc (OCL) at valuation date')
+    if name_model1 is not None:
+        plt.xticks([0], [name_model1])
     plt.show()
 
     # Boxplots of OCL errors at valuation date
     sns.boxplot(data=results[['ocl_error_preds_val', 'ocl_error_incurreds_val']])
     plt.grid(axis='y', linestyle='--', alpha=0.7)
-    plt.xticks([0, 1], ['Predictions', 'Incurreds'])
+
+    if name_model1 is not None:
+        plt.xticks([0, 1], [name_model1, 'Incurreds'])
+    else:
+        plt.xticks([0, 1], ['Predictions', 'Incurreds'])
     plt.ylabel('OCL error (%)')
     plt.title('OCL errors at valuation date')
     plt.show()
@@ -3608,14 +3644,20 @@ def plot_results_multiple_datasets(results):
     # Boxplots of MALE and MSLE
     sns.boxplot(data=results[['MALE_preds', 'MALE_incurreds']])
     plt.grid(axis='y', linestyle='--', alpha=0.7)
-    plt.xticks([0, 1], ['Predictions', 'Incurreds'])
+    if name_model1 is not None:
+        plt.xticks([0, 1], [name_model1, 'Incurreds'])
+    else:
+        plt.xticks([0, 1], ['Predictions', 'Incurreds'])
     plt.title('MALE across multiple datasets')
     plt.ylabel('MALE')
     plt.show()
 
     sns.boxplot(data=results[['MSLE_preds', 'MSLE_incurreds']])
     plt.grid(axis='y', linestyle='--', alpha=0.7)
-    plt.xticks([0, 1], ['Predictions', 'Incurreds'])
+    if name_model1 is not None:
+        plt.xticks([0, 1], [name_model1, 'Incurreds'])
+    else:
+        plt.xticks([0, 1], ['Predictions', 'Incurreds'])
     plt.title('MSLE across multiple datasets')
     plt.ylabel('MSLE')
     plt.show()
@@ -3623,21 +3665,27 @@ def plot_results_multiple_datasets(results):
     # Boxplots of MALE and MSLE at valuation date
     sns.boxplot(data=results[['MALE_preds_val', 'MALE_incurreds_val']])
     plt.grid(axis='y', linestyle='--', alpha=0.7)
-    plt.xticks([0, 1], ['Predictions', 'Incurreds'])
+    if name_model1 is not None:
+        plt.xticks([0, 1], [name_model1, 'Incurreds'])
+    else:
+        plt.xticks([0, 1], ['Predictions', 'Incurreds'])
     plt.title('MALE at valuation date')
     plt.ylabel('MALE')
     plt.show()
 
     sns.boxplot(data=results[['MSLE_preds_val', 'MSLE_incurreds_val']])
     plt.grid(axis='y', linestyle='--', alpha=0.7)
-    plt.xticks([0, 1], ['Predictions', 'Incurreds'])
+    if name_model1 is not None:
+        plt.xticks([0, 1], [name_model1, 'Incurreds'])
+    else:
+        plt.xticks([0, 1], ['Predictions', 'Incurreds'])
     plt.title('MSLE at valuation date')
     plt.ylabel('MSLE')
     plt.show()
 
-def test_multiple_datasets(fp_py, fp_out, seed_base, max_iter):
+def test_multiple_datasets(fp_py, fp_out, seed_base, max_iter, name_model1=None):
     results = results_multiple_datasets(fp_py, fp_out, seed_base, max_iter)
-    plot_results_multiple_datasets(results)
+    plot_results_multiple_datasets(results, name_model1)
 
 def plot_multiple_models_by_time(results_model1, results_model2, name_model1, name_model2):
 
