@@ -235,19 +235,52 @@ def create_grid(target_cols, criterions, types, output_layers,
 
     return hyperparameter_grid
 
-def box_plot(data, positions, median_colour, edge_colour, fill_colour, alpha=1, widths=0.7):
+median_colours = {'LSTM+': "#5D3EF8",
+                  'LSTM': "#3EBBFA",
+                  'FNN+': "#F147D5",
+                  'FNN': "#1FEB63",
+                  'PCE': "#EEC704"}
+
+edge_colours = {'LSTM+': '#332288',
+                'LSTM': "#3B8BB3",
+                'FNN+': '#AA4499',
+                'FNN': '#117733',
+                'PCE': "#B19A27"}
+
+fill_colours = {'LSTM+': "#B1A2FC",
+                'LSTM': '#88CCEE',
+                'FNN+': "#FC9FEC",
+                'FNN': "#7DF1A4",
+                'PCE': '#DDCC77'}
+
+def get_median_colour(model_name):
+    if model_name in median_colours.keys():
+        return median_colours[model_name]
+    return "#FF0000"
+
+def get_edge_colour(model_name):
+    if model_name in edge_colours.keys():
+        return edge_colours[model_name]
+    return "#FF0000"
+
+def get_fill_colour(model_name):
+    if model_name in fill_colours.keys():
+        return fill_colours[model_name]
+    return "#FF0000"
+
+def box_plot(data, positions, model_name=None, alpha=1, widths=0.7, showfliers=False):
     data = pd.DataFrame(data)
 
     # dataframe boxplot needed over matplotlib or seaborn to handle missing values correctly !!!
-    bp = data.boxplot(backend='matplotlib', return_type='dict', grid=False, positions=positions, widths=widths, patch_artist=True, showfliers=False)
+    bp = data.boxplot(backend='matplotlib', return_type='dict', grid=False, positions=positions, widths=widths, patch_artist=True, showfliers=showfliers)
 
-    plt.setp(bp['medians'], color=median_colour, linewidth=2)
+    plt.setp(bp['medians'], color=get_median_colour(model_name), linewidth=2)
 
     for element in ['boxes', 'whiskers', 'fliers', 'means', 'caps']:
-        plt.setp(bp[element], color=edge_colour)
+        plt.setp(bp[element], color=get_edge_colour(model_name))
 
     for patch in bp['boxes']:
-        patch.set(facecolor=fill_colour, alpha=alpha)
+        patch.set(facecolor=get_fill_colour(model_name), alpha=alpha)
         
     return bp
 
@@ -1976,9 +2009,9 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
         # 1 dataset, multiple predictions
         if isinstance(actuals, pd.Series):
             # Boxplot with better colours
-            bp_preds_model1 = box_plot(results_model1['preds_by_time'], positions=times, median_colour='red', edge_colour='chocolate', fill_colour='bisque')
+            bp_preds_model1 = box_plot(results_model1['preds_by_time'], positions=times, model_name=name_model1)
             if results_model2 is not None:
-                bp_preds_model2 = box_plot(results_model2['preds_by_time'], positions=times, median_colour='yellow', edge_colour='indigo', fill_colour='violet')
+                bp_preds_model2 = box_plot(results_model2['preds_by_time'], positions=times, model_name=name_model2)
             plt.plot(times, actuals_by_time)
             if include_incurreds:
                 plt.plot(times, incurreds_by_time, color = 'green')
@@ -2010,9 +2043,9 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             plt.show()
             
             # Boxplot with aggregate OCLs instead of aggregate claim sizes
-            bp_preds_model1 = box_plot(results_model1['ocl_preds_by_time'], positions=times, median_colour='red', edge_colour='chocolate', fill_colour='bisque')
+            bp_preds_model1 = box_plot(results_model1['ocl_preds_by_time'], positions=times, model_name=name_model1)
             if results_model2 is not None:
-                bp_preds_model2 = box_plot(results_model2['ocl_preds_by_time'], positions=times, median_colour='yellow', edge_colour='indigo', fill_colour='violet')
+                bp_preds_model2 = box_plot(results_model2['ocl_preds_by_time'], positions=times, model_name=name_model2)
             plt.plot(times, ocls_by_time)
             if include_incurreds:
                 plt.plot(times, ocl_incurreds_by_time, color = 'green')
@@ -2047,11 +2080,11 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
         else:
 
             # Boxplot with better colours
-            bp_preds_model1 = box_plot(results_model1['preds_over_actuals_by_time'], positions=times, median_colour='red', edge_colour='chocolate', fill_colour='bisque')
+            bp_preds_model1 = box_plot(results_model1['preds_over_actuals_by_time'], positions=times, model_name=name_model1)
             if results_model2 is not None:
-                bp_preds_model2 = box_plot(results_model2['preds_over_actuals_by_time'], positions=times, median_colour='yellow', edge_colour='indigo', fill_colour='violet')
+                bp_preds_model2 = box_plot(results_model2['preds_over_actuals_by_time'], positions=times, model_name=name_model2)
             if include_incurreds:
-                bp_incurreds = box_plot(incurreds_over_actuals_by_time, positions=times, median_colour='cyan', edge_colour='darkgreen', fill_colour='lightgreen')
+                bp_incurreds = box_plot(incurreds_over_actuals_by_time, positions=times, model_name='PCE')
             plt.plot(times, [1] * len(times))
             plt.plot(times, pred_cumulative_prop_by_time, color='black', alpha = 0.8)
 
@@ -2087,11 +2120,11 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             plt.show()
             
             # Boxplot with aggregate OCLs instead of aggregate claim sizes
-            bp_preds_model1 = box_plot(results_model1['ocl_preds_over_actuals_by_time'], positions=times, median_colour='red', edge_colour='chocolate', fill_colour='bisque')
+            bp_preds_model1 = box_plot(results_model1['ocl_preds_over_actuals_by_time'], positions=times, model_name=name_model1)
             if results_model2 is not None:
-                bp_preds_model2 = box_plot(results_model2['ocl_preds_over_actuals_by_time'], positions=times, median_colour='yellow', edge_colour='indigo', fill_colour='violet')
+                bp_preds_model2 = box_plot(results_model2['ocl_preds_over_actuals_by_time'], positions=times, model_name=name_model2)
             if include_incurreds:
-                bp_incurreds = box_plot(ocl_incurreds_over_actuals_by_time, positions=times, median_colour='cyan', edge_colour='darkgreen', fill_colour='lightgreen')
+                bp_incurreds = box_plot(ocl_incurreds_over_actuals_by_time, positions=times, model_name='PCE')
             plt.plot(times, [1] * len(times))
             plt.plot(times, pred_cumulative_prop_by_time, color='black', alpha = 0.8)
 
@@ -2131,7 +2164,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
 
             # Boxplot with incurreds only
             if include_incurreds:
-                bp_incurreds = box_plot(ocl_incurreds_over_actuals_by_time, positions=times, median_colour='cyan', edge_colour='darkgreen', fill_colour='lightgreen')
+                bp_incurreds = box_plot(ocl_incurreds_over_actuals_by_time, positions=times, model_name='PCE')
                 plt.plot(times, [1] * len(times))
                 plt.plot(times, pred_cumulative_prop_by_time, color='black', alpha = 0.8)
 
@@ -2160,7 +2193,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
                 plt.show()
 
                 if time_str == 'dev_quarter':
-                    bp_incurreds = box_plot([sublist[:10] for sublist in ocl_incurreds_over_actuals_by_time], positions=times[:10], median_colour='cyan', edge_colour='darkgreen', fill_colour='lightgreen')
+                    bp_incurreds = box_plot([sublist[:10] for sublist in ocl_incurreds_over_actuals_by_time], positions=times[:10], model_name='PCE')
                     plt.plot(times[:10], [1] * len(times[:10]))
                     plt.plot(times[:10], pred_cumulative_prop_by_time[:10], color='black', alpha = 0.8)
 
@@ -2176,7 +2209,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
 
                     plt.show()
 
-                    bp_incurreds = box_plot([sublist[:16] for sublist in ocl_incurreds_over_actuals_by_time], positions=times[:16], median_colour='cyan', edge_colour='darkgreen', fill_colour='lightgreen')
+                    bp_incurreds = box_plot([sublist[:16] for sublist in ocl_incurreds_over_actuals_by_time], positions=times[:16], model_name='PCE')
                     plt.plot(times[:16], [1] * len(times[:16]))
                     plt.plot(times[:16], pred_cumulative_prop_by_time[:16], color='black', alpha = 0.8)
 
@@ -2194,11 +2227,11 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
 
             # Boxplot with aggregate OCLs instead of aggregate claim sizes (capped at dev quarter 10)
             if time_str == 'dev_quarter':
-                bp_preds_model1 = box_plot([sublist[:10] for sublist in results_model1['ocl_preds_over_actuals_by_time']], positions=times[:10], median_colour='red', edge_colour='chocolate', fill_colour='bisque')
+                bp_preds_model1 = box_plot([sublist[:10] for sublist in results_model1['ocl_preds_over_actuals_by_time']], positions=times[:10], model_name=name_model1)
                 if results_model2 is not None:
-                    bp_preds_model2 = box_plot([sublist[:10] for sublist in results_model2['ocl_preds_over_actuals_by_time']], positions=times[:10], median_colour='yellow', edge_colour='indigo', fill_colour='violet')
+                    bp_preds_model2 = box_plot([sublist[:10] for sublist in results_model2['ocl_preds_over_actuals_by_time']], positions=times[:10], model_name=name_model2)
                 if include_incurreds:
-                    bp_incurreds = box_plot([sublist[:10] for sublist in ocl_incurreds_over_actuals_by_time], positions=times[:10], median_colour='cyan', edge_colour='darkgreen', fill_colour='lightgreen')
+                    bp_incurreds = box_plot([sublist[:10] for sublist in ocl_incurreds_over_actuals_by_time], positions=times[:10], model_name='PCE')
                 plt.plot(times[:10], [1] * len(times[:10]))
                 plt.plot(times[:10], pred_cumulative_prop_by_time[:10], color='black', alpha = 0.8)
 
@@ -2227,11 +2260,11 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             
             # Boxplot with aggregate OCLs instead of aggregate claim sizes (capped at dev quarter 16)
             if time_str == 'dev_quarter':
-                bp_preds_model1 = box_plot([sublist[:16] for sublist in results_model1['ocl_preds_over_actuals_by_time']], positions=times[:16], median_colour='red', edge_colour='chocolate', fill_colour='bisque')
+                bp_preds_model1 = box_plot([sublist[:16] for sublist in results_model1['ocl_preds_over_actuals_by_time']], positions=times[:16], model_name=name_model1)
                 if results_model2 is not None:
-                    bp_preds_model2 = box_plot([sublist[:16] for sublist in results_model2['ocl_preds_over_actuals_by_time']], positions=times[:16], median_colour='yellow', edge_colour='indigo', fill_colour='violet')
+                    bp_preds_model2 = box_plot([sublist[:16] for sublist in results_model2['ocl_preds_over_actuals_by_time']], positions=times[:16], model_name=name_model2)
                 if include_incurreds:
-                    bp_incurreds = box_plot([sublist[:16] for sublist in ocl_incurreds_over_actuals_by_time], positions=times[:16], median_colour='cyan', edge_colour='darkgreen', fill_colour='lightgreen')
+                    bp_incurreds = box_plot([sublist[:16] for sublist in ocl_incurreds_over_actuals_by_time], positions=times[:16], model_name='PCE')
                 plt.plot(times[:16], [1] * len(times[:16]))
                 plt.plot(times[:16], pred_cumulative_prop_by_time[:16], color='black', alpha = 0.8)
 
@@ -2259,11 +2292,11 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
                 plt.show()
 
             # Boxplot with aggregate OCLs and transparency for overlapping boxes
-            bp_preds_model1 = box_plot(results_model1['ocl_preds_over_actuals_by_time'], positions=times, median_colour='red', edge_colour='chocolate', fill_colour='bisque', alpha=0.5)
+            bp_preds_model1 = box_plot(results_model1['ocl_preds_over_actuals_by_time'], positions=times, model_name=name_model1, alpha=0.5)
             if results_model2 is not None:
-                bp_preds_model2 = box_plot(results_model2['ocl_preds_over_actuals_by_time'], positions=times, median_colour='yellow', edge_colour='indigo', fill_colour='violet', alpha=0.5)
+                bp_preds_model2 = box_plot(results_model2['ocl_preds_over_actuals_by_time'], positions=times, model_name=name_model2, alpha=0.5)
             if include_incurreds:
-                bp_incurreds = box_plot(ocl_incurreds_over_actuals_by_time, positions=times, median_colour='cyan', edge_colour='darkgreen', fill_colour='lightgreen', alpha=0.5)
+                bp_incurreds = box_plot(ocl_incurreds_over_actuals_by_time, positions=times, model_name='PCE', alpha=0.5)
             plt.plot(times, [1] * len(times))
             plt.plot(times, pred_cumulative_prop_by_time, color='black', alpha = 0.8)
 
@@ -2299,11 +2332,11 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             plt.show()
 
             # Boxplot with aggregate OCLs and side by side boxes
-            bp_preds_model1 = box_plot(results_model1['ocl_preds_over_actuals_by_time'], positions=times-0.2, median_colour='red', edge_colour='chocolate', fill_colour='bisque', widths=0.3)
+            bp_preds_model1 = box_plot(results_model1['ocl_preds_over_actuals_by_time'], positions=times-0.2, model_name=name_model1, widths=0.3)
             if results_model2 is not None:
-                bp_preds_model2 = box_plot(results_model2['ocl_preds_over_actuals_by_time'], positions=times+0.2, median_colour='yellow', edge_colour='indigo', fill_colour='violet', widths=0.3)
+                bp_preds_model2 = box_plot(results_model2['ocl_preds_over_actuals_by_time'], positions=times+0.2, model_name=name_model2, widths=0.3)
             if include_incurreds:
-                bp_incurreds = box_plot(ocl_incurreds_over_actuals_by_time, positions=times, median_colour='cyan', edge_colour='darkgreen', fill_colour='lightgreen')
+                bp_incurreds = box_plot(ocl_incurreds_over_actuals_by_time, positions=times, model_name='PCE')
             plt.plot(times, [1] * len(times))
             plt.plot(times, pred_cumulative_prop_by_time, color='black', alpha = 0.8)
 
@@ -2339,11 +2372,11 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             plt.show()
 
             # Boxplot with aggregate OCLs (hard code negative OCL preds as 0)
-            bp_preds_model1 = box_plot(results_model1['ocl_preds_over_actuals_by_time_adjusted'], positions=times, median_colour='red', edge_colour='chocolate', fill_colour='bisque')
+            bp_preds_model1 = box_plot(results_model1['ocl_preds_over_actuals_by_time_adjusted'], positions=times, model_name=name_model1)
             if results_model2 is not None:
-                bp_preds_model2 = box_plot(results_model2['ocl_preds_over_actuals_by_time_adjusted'], positions=times, median_colour='yellow', edge_colour='indigo', fill_colour='violet')
+                bp_preds_model2 = box_plot(results_model2['ocl_preds_over_actuals_by_time_adjusted'], positions=times, model_name=name_model2)
             if include_incurreds:
-                bp_incurreds = box_plot(ocl_incurreds_over_actuals_by_time, positions=times, median_colour='cyan', edge_colour='darkgreen', fill_colour='lightgreen')
+                bp_incurreds = box_plot(ocl_incurreds_over_actuals_by_time, positions=times, model_name='PCE')
             plt.plot(times, [1] * len(times))
             plt.plot(times, pred_cumulative_prop_by_time, color='black', alpha = 0.8)
 
@@ -2379,9 +2412,9 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             plt.show()
 
         # boxplot of weighted vsInc by claim size
-        bp_preds_model1 = box_plot(results_model1['weighted_vsInc_claimsize_by_time'], positions=times, median_colour='fuchsia', edge_colour='darkblue', fill_colour='lightblue')
+        bp_preds_model1 = box_plot(results_model1['weighted_vsInc_claimsize_by_time'], positions=times, model_name=name_model1)
         if results_model2 is not None:
-            bp_preds_model2 = box_plot(results_model2['weighted_vsInc_claimsize_by_time'], positions=times, median_colour='orange', edge_colour='darkgoldenrod', fill_colour='cornsilk')
+            bp_preds_model2 = box_plot(results_model2['weighted_vsInc_claimsize_by_time'], positions=times, model_name=name_model2)
         plt.plot(times, pred_cumulative_prop_by_time * 100, color='black', alpha = 0.7)
 
         if name_model1 is not None and name_model2 is not None:
@@ -2409,9 +2442,9 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
         plt.show()
 
         # boxplot of weighted vsInc by ocl
-        bp_preds_model1 = box_plot(results_model1['weighted_vsInc_ocl_by_time'], positions=times, median_colour='fuchsia', edge_colour='darkblue', fill_colour='lightblue')
+        bp_preds_model1 = box_plot(results_model1['weighted_vsInc_ocl_by_time'], positions=times, model_name=name_model1)
         if results_model2 is not None:
-            bp_preds_model2 = box_plot(results_model2['weighted_vsInc_ocl_by_time'], positions=times, median_colour='orange', edge_colour='darkgoldenrod', fill_colour='cornsilk')
+            bp_preds_model2 = box_plot(results_model2['weighted_vsInc_ocl_by_time'], positions=times, model_name=name_model2)
         plt.plot(times, pred_cumulative_prop_by_time * 100, color='black', alpha = 0.7)
 
         if name_model1 is not None and name_model2 is not None:
@@ -2441,9 +2474,9 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
         # Boxplot of weighted vsInc by ocl (capped at dev quarter 10)
         if time_str == 'dev_quarter':
 
-            bp_preds_model1 = box_plot([sublist[:10] for sublist in results_model1['weighted_vsInc_ocl_by_time']], positions=times[:10], median_colour='fuchsia', edge_colour='darkblue', fill_colour='lightblue')
+            bp_preds_model1 = box_plot([sublist[:10] for sublist in results_model1['weighted_vsInc_ocl_by_time']], positions=times[:10], model_name=name_model1)
             if results_model2 is not None:
-                bp_preds_model2 = box_plot([sublist[:10] for sublist in results_model2['weighted_vsInc_ocl_by_time']], positions=times[:10], median_colour='orange', edge_colour='darkgoldenrod', fill_colour='cornsilk')
+                bp_preds_model2 = box_plot([sublist[:10] for sublist in results_model2['weighted_vsInc_ocl_by_time']], positions=times[:10], model_name=name_model2)
             plt.plot(times[:10], pred_cumulative_prop_by_time[:10] * 100, color='black', alpha = 0.7)
 
             if name_model1 is not None and name_model2 is not None:
@@ -2462,9 +2495,9 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
         # Boxplot of weighted vsInc by ocl (capped at dev quarter 16)
         if time_str == 'dev_quarter':
 
-            bp_preds_model1 = box_plot([sublist[:16] for sublist in results_model1['weighted_vsInc_ocl_by_time']], positions=times[:16], median_colour='fuchsia', edge_colour='darkblue', fill_colour='lightblue')
+            bp_preds_model1 = box_plot([sublist[:16] for sublist in results_model1['weighted_vsInc_ocl_by_time']], positions=times[:16], model_name=name_model1)
             if results_model2 is not None:
-                bp_preds_model2 = box_plot([sublist[:16] for sublist in results_model2['weighted_vsInc_ocl_by_time']], positions=times[:16], median_colour='orange', edge_colour='darkgoldenrod', fill_colour='cornsilk')
+                bp_preds_model2 = box_plot([sublist[:16] for sublist in results_model2['weighted_vsInc_ocl_by_time']], positions=times[:16], model_name=name_model2)
             plt.plot(times[:16], pred_cumulative_prop_by_time[:16] * 100, color='black', alpha = 0.7)
 
             if name_model1 is not None and name_model2 is not None:
@@ -2482,9 +2515,9 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
 
 
         # boxplot of weighted vsInc by ocl with transparency for overlapping boxes
-        bp_preds_model1 = box_plot(results_model1['weighted_vsInc_ocl_by_time'], positions=times, median_colour='fuchsia', edge_colour='darkblue', fill_colour='lightblue', alpha=0.5)
+        bp_preds_model1 = box_plot(results_model1['weighted_vsInc_ocl_by_time'], positions=times, model_name=name_model1, alpha=0.5)
         if results_model2 is not None:
-            bp_preds_model2 = box_plot(results_model2['weighted_vsInc_ocl_by_time'], positions=times, median_colour='orange', edge_colour='darkgoldenrod', fill_colour='cornsilk', alpha=0.5)
+            bp_preds_model2 = box_plot(results_model2['weighted_vsInc_ocl_by_time'], positions=times, model_name=name_model2, alpha=0.5)
         plt.plot(times, pred_cumulative_prop_by_time * 100, color='black', alpha = 0.7)
 
         if name_model1 is not None and name_model2 is not None:
@@ -2512,9 +2545,9 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
         plt.show()
 
         # boxplot of weighted vsInc by ocl with side by side boxes
-        bp_preds_model1 = box_plot(results_model1['weighted_vsInc_ocl_by_time'], positions=times-0.2, median_colour='fuchsia', edge_colour='darkblue', fill_colour='lightblue', widths=0.3)
+        bp_preds_model1 = box_plot(results_model1['weighted_vsInc_ocl_by_time'], positions=times-0.2, model_name=name_model1, widths=0.3)
         if results_model2 is not None:
-            bp_preds_model2 = box_plot(results_model2['weighted_vsInc_ocl_by_time'], positions=times+0.2, median_colour='orange', edge_colour='darkgoldenrod', fill_colour='cornsilk', widths=0.3)
+            bp_preds_model2 = box_plot(results_model2['weighted_vsInc_ocl_by_time'], positions=times+0.2, model_name=name_model2, widths=0.3)
         plt.plot(times, pred_cumulative_prop_by_time * 100, color='black', alpha = 0.7)
 
         if name_model1 is not None and name_model2 is not None:
@@ -3684,7 +3717,7 @@ def plot_results_multiple_datasets(results, name_model1):
     plt.show()
 
     # Boxplot of vsInc accuracy
-    sns.boxplot(data=results['vsInc'], color='lightgreen')
+    bp_preds_model1 = box_plot(results['vsInc'], [0], model_name=name_model1, showfliers=True)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.ylabel('vsInc accuracy (%)')
     plt.title('vsInc accuracy across multiple datasets')
@@ -3700,7 +3733,7 @@ def plot_results_multiple_datasets(results, name_model1):
     plt.show()
 
     # Boxplot of weighted vsInc (Claim Size)
-    sns.boxplot(data=results['weighted_vsInc_claimsize'], color='skyblue')
+    bp_preds_model1 = box_plot(results['weighted_vsInc_claimsize'], [0], model_name=name_model1, showfliers=True)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.ylabel('weighted vsInc (Claim Size) (%)')
     plt.title('weighted vsInc (Claim Size) across multiple datasets')
@@ -3716,7 +3749,7 @@ def plot_results_multiple_datasets(results, name_model1):
     plt.show()
 
     # Boxplot of weighted vsInc (OCL)
-    sns.boxplot(data=results['weighted_vsInc_ocl'], color='yellow')
+    bp_preds_model1 = box_plot(results['weighted_vsInc_ocl'], [0], model_name=name_model1, showfliers=True)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.ylabel('weighted vsInc (OCL) (%)')
     plt.title('weighted vsInc (OCL) across multiple datasets')
@@ -3733,7 +3766,7 @@ def plot_results_multiple_datasets(results, name_model1):
     plt.show()
 
     # Boxplot of weighted vsInc (Claim Size) at the valuation date
-    sns.boxplot(data=results['weighted_vsInc_claimsize_val'], color='skyblue')
+    bp_preds_model1 = box_plot(results['weighted_vsInc_claimsize_val'], [0], model_name=name_model1, showfliers=True)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.ylabel('weighted vsInc (Claim Size) (%) at valuation date')
     plt.title('weighted vsInc (Claim Size) at valuation date')
@@ -3752,7 +3785,7 @@ def plot_results_multiple_datasets(results, name_model1):
     # Boxplot of weighted vsInc (OCL) at the valuation date
     fig = plt.figure()
     fig.set_figwidth(1.2)
-    sns.boxplot(data=results['weighted_vsInc_ocl_val'], color='yellow')
+    bp_preds_model1 = box_plot(results['weighted_vsInc_ocl_val'], [0], model_name=name_model1, showfliers=True)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     #plt.ylabel('weighted vsInc (OCL) (%)')
     plt.title('$vsPCE_{OCL} (\%)$')
@@ -3761,7 +3794,10 @@ def plot_results_multiple_datasets(results, name_model1):
     plt.show()
 
     # Boxplots of OCL errors at valuation date
-    sns.boxplot(data=results[['ocl_error_preds_val', 'ocl_error_incurreds_val']])
+    fig = plt.figure()
+    fig.set_figwidth(2.4)
+    bp_preds_model1 = box_plot(results['ocl_error_preds_val'], [0], model_name=name_model1, showfliers=True)
+    bp_incurreds = box_plot(results['ocl_error_incurreds_val'], [1], model_name='PCE', showfliers=True)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
 
     if name_model1 is not None:
@@ -3786,7 +3822,8 @@ def plot_results_multiple_datasets(results, name_model1):
     plt.show()
 
     # Boxplots of MALE and MSLE
-    sns.boxplot(data=results[['MALE_preds', 'MALE_incurreds']])
+    bp_preds_model1 = box_plot(results['MALE_preds'], [0], model_name=name_model1, showfliers=True)
+    bp_incurreds = box_plot(results['MALE_incurreds'], [1], model_name='PCE', showfliers=True)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     if name_model1 is not None:
         plt.xticks([0, 1], [name_model1, 'PCE'])
@@ -3796,7 +3833,8 @@ def plot_results_multiple_datasets(results, name_model1):
     plt.ylabel('MALE')
     plt.show()
 
-    sns.boxplot(data=results[['MSLE_preds', 'MSLE_incurreds']])
+    bp_preds_model1 = box_plot(results['MSLE_preds'], [0], model_name=name_model1, showfliers=True)
+    bp_incurreds = box_plot(results['MSLE_incurreds'], [1], model_name='PCE', showfliers=True)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     if name_model1 is not None:
         plt.xticks([0, 1], [name_model1, 'PCE'])
@@ -3807,7 +3845,10 @@ def plot_results_multiple_datasets(results, name_model1):
     plt.show()
 
     # Boxplots of MALE and MSLE at valuation date
-    sns.boxplot(data=results[['MALE_preds_val', 'MALE_incurreds_val']])
+    fig = plt.figure()
+    fig.set_figwidth(2.4)
+    bp_preds_model1 = box_plot(results['MALE_preds_val'], [0], model_name=name_model1, showfliers=True)
+    bp_incurreds = box_plot(results['MALE_incurreds_val'], [1], model_name='PCE', showfliers=True)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     if name_model1 is not None:
         plt.xticks([0, 1], [name_model1, 'PCE'])
@@ -3817,7 +3858,10 @@ def plot_results_multiple_datasets(results, name_model1):
     #plt.ylabel('MALE')
     plt.show()
 
-    sns.boxplot(data=results[['MSLE_preds_val', 'MSLE_incurreds_val']])
+    fig = plt.figure()
+    fig.set_figwidth(2.4)
+    bp_preds_model1 = box_plot(results['MSLE_preds_val'], [0], model_name=name_model1, showfliers=True)
+    bp_incurreds = box_plot(results['MSLE_incurreds_val'], [1], model_name='PCE', showfliers=True)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     if name_model1 is not None:
         plt.xticks([0, 1], [name_model1, 'PCE'])
@@ -3905,8 +3949,8 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     plot_multiple_models_by_time(results_model1, results_model2, name_model1, name_model2)
 
     # Boxplot of weighted vsInc (OCL)
-    sns.boxplot(data=[results_model1['weighted_vsInc_ocl'], 
-                      results_model2['weighted_vsInc_ocl']])
+    bp_preds_model1 = box_plot(results_model1['weighted_vsInc_ocl'], [0], model_name=name_model1, showfliers=True)
+    bp_preds_model2 = box_plot(results_model2['weighted_vsInc_ocl'], [1], model_name=name_model2, showfliers=True) 
     plt.xticks([0, 1], [name_model1, name_model2])
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.ylabel('weighted vsInc (OCL) (%)')
@@ -3916,8 +3960,8 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     # Boxplot of weighted vsInc (OCL) at the valuation date
     fig = plt.figure()
     fig.set_figwidth(2.4)
-    sns.boxplot(data=[results_model1['weighted_vsInc_ocl_val'], 
-                      results_model2['weighted_vsInc_ocl_val']])
+    bp_preds_model1 = box_plot(results_model1['weighted_vsInc_ocl_val'], [0], model_name=name_model1, showfliers=True)
+    bp_preds_model2 = box_plot(results_model2['weighted_vsInc_ocl_val'], [1], model_name=name_model2, showfliers=True)    
     plt.xticks([0, 1], [name_model1, name_model2])
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     #plt.ylabel('weighted vsInc (OCL) (%)')
@@ -3925,9 +3969,9 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     plt.show()
 
     # Boxplots of OCL errors at valuation date with incurreds
-    sns.boxplot(data=[results_model1['ocl_error_preds_val'], 
-                      results_model2['ocl_error_preds_val'],
-                      results_model1['ocl_error_incurreds_val']])
+    bp_preds_model1 = box_plot(results_model1['ocl_error_preds_val'], [0], model_name=name_model1, showfliers=True)
+    bp_preds_model2 = box_plot(results_model2['ocl_error_preds_val'], [1], model_name=name_model2, showfliers=True)
+    bp_incurreds = box_plot(results_model1['ocl_error_incurreds_val'], [2], model_name='PCE', showfliers=True)
     plt.axhline(0, color='blue', linestyle='dashed', linewidth=2)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.xticks([0, 1, 2], [name_model1, name_model2, 'PCE'])
@@ -3937,9 +3981,9 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
 
     ### With Incurreds 
     # Boxplots of OCL errors at valuation date (excl. outliers)
-    sns.boxplot(data=[results_model1['ocl_error_preds_val'], 
-                      results_model2['ocl_error_preds_val'],
-                      results_model1['ocl_error_incurreds_val']], showfliers=False)
+    bp_preds_model1 = box_plot(results_model1['ocl_error_preds_val'], [0], model_name=name_model1, showfliers=False)
+    bp_preds_model2 = box_plot(results_model2['ocl_error_preds_val'], [1], model_name=name_model2, showfliers=False)
+    bp_incurreds = box_plot(results_model1['ocl_error_incurreds_val'], [2], model_name='PCE', showfliers=False)
     plt.axhline(0, color='blue', linestyle='dashed', linewidth=2)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.xticks([0, 1, 2], [name_model1, name_model2, 'PCE'])
@@ -3948,18 +3992,18 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     plt.show()
 
     # Boxplots of MALE and MSLE
-    sns.boxplot(data=[results_model1['MALE_preds'], 
-                      results_model2['MALE_preds'],
-                      results_model1['MALE_incurreds']])
+    bp_preds_model1 = box_plot(results_model1['MALE_preds'], [0], model_name=name_model1, showfliers=True)
+    bp_preds_model2 = box_plot(results_model2['MALE_preds'], [1], model_name=name_model2, showfliers=True)
+    bp_incurreds = box_plot(results_model1['MALE_incurreds'], [2], model_name='PCE', showfliers=True)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.xticks([0, 1, 2], [name_model1, name_model2, 'PCE'])
     plt.title('MALE across multiple datasets')
     plt.ylabel('MALE')
     plt.show()
 
-    sns.boxplot(data=[results_model1['MSLE_preds'], 
-                      results_model2['MSLE_preds'],
-                      results_model1['MSLE_incurreds']])
+    bp_preds_model1 = box_plot(results_model1['MSLE_preds'], [0], model_name=name_model1, showfliers=True)
+    bp_preds_model2 = box_plot(results_model2['MSLE_preds'], [1], model_name=name_model2, showfliers=True)
+    bp_incurreds = box_plot(results_model1['MSLE_incurreds'], [2], model_name='PCE', showfliers=True)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.xticks([0, 1, 2], [name_model1, name_model2, 'PCE'])
     plt.title('MSLE across multiple datasets')
@@ -3967,18 +4011,18 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     plt.show()
 
     # Boxplots of MALE and MSLE at valuation date
-    sns.boxplot(data=[results_model1['MALE_preds_val'], 
-                      results_model2['MALE_preds_val'],
-                      results_model1['MALE_incurreds_val']])
+    bp_preds_model1 = box_plot(results_model1['MALE_preds_val'], [0], model_name=name_model1, showfliers=True)
+    bp_preds_model2 = box_plot(results_model2['MALE_preds_val'], [1], model_name=name_model2, showfliers=True)
+    bp_incurreds = box_plot(results_model1['MALE_incurreds_val'], [2], model_name='PCE', showfliers=True)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.xticks([0, 1, 2], [name_model1, name_model2, 'PCE'])
     plt.title('MALE')
     #plt.ylabel('MALE')
     plt.show()
 
-    sns.boxplot(data=[results_model1['MSLE_preds_val'], 
-                      results_model2['MSLE_preds_val'],
-                      results_model1['MSLE_incurreds_val']])
+    bp_preds_model1 = box_plot(results_model1['MSLE_preds_val'], [0], model_name=name_model1, showfliers=True)
+    bp_preds_model2 = box_plot(results_model2['MSLE_preds_val'], [1], model_name=name_model2, showfliers=True)
+    bp_incurreds = box_plot(results_model1['MSLE_incurreds_val'], [2], model_name='PCE', showfliers=True)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.xticks([0, 1, 2], [name_model1, name_model2, 'PCE'])
     plt.title('MSLE')
@@ -3989,8 +4033,8 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     # Boxplots of OCL errors at valuation date
     fig = plt.figure()
     fig.set_figwidth(2.4)
-    sns.boxplot(data=[results_model1['ocl_error_preds_val'], 
-                      results_model2['ocl_error_preds_val']])
+    bp_preds_model1 = box_plot(results_model1['ocl_error_preds_val'], [0], model_name=name_model1, showfliers=True)
+    bp_preds_model2 = box_plot(results_model2['ocl_error_preds_val'], [1], model_name=name_model2, showfliers=True)
     plt.axhline(0, color='blue', linestyle='dashed', linewidth=2)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.xticks([0, 1], [name_model1, name_model2])
@@ -4001,8 +4045,8 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     # Boxplots of OCL errors at valuation date (excl. outliers)
     fig = plt.figure()
     fig.set_figwidth(2.4)
-    sns.boxplot(data=[results_model1['ocl_error_preds_val'], 
-                      results_model2['ocl_error_preds_val']], showfliers=False)
+    bp_preds_model1 = box_plot(results_model1['ocl_error_preds_val'], [0], model_name=name_model1, showfliers=False)
+    bp_preds_model2 = box_plot(results_model2['ocl_error_preds_val'], [1], model_name=name_model2, showfliers=False)
     plt.axhline(0, color='blue', linestyle='dashed', linewidth=2)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.xticks([0, 1], [name_model1, name_model2])
@@ -4013,8 +4057,8 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     # Boxplots of MALE and MSLE at valuation date
     fig = plt.figure()
     fig.set_figwidth(2.4)
-    sns.boxplot(data=[results_model1['MALE_preds_val'], 
-                      results_model2['MALE_preds_val']])
+    bp_preds_model1 = box_plot(results_model1['MALE_preds_val'], [0], model_name=name_model1, showfliers=True)
+    bp_preds_model2 = box_plot(results_model2['MALE_preds_val'], [1], model_name=name_model2, showfliers=True)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.xticks([0, 1], [name_model1, name_model2])
     plt.title('MALE')
@@ -4023,8 +4067,8 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
 
     fig = plt.figure()
     fig.set_figwidth(2.4)
-    sns.boxplot(data=[results_model1['MSLE_preds_val'], 
-                      results_model2['MSLE_preds_val']])
+    bp_preds_model1 = box_plot(results_model1['MSLE_preds_val'], [0], model_name=name_model1, showfliers=True)
+    bp_preds_model2 = box_plot(results_model2['MSLE_preds_val'], [1], model_name=name_model2, showfliers=True)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.xticks([0, 1], [name_model1, name_model2])
     plt.title('MSLE')
@@ -4057,7 +4101,7 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     print(f'vsM1 (OCL): mean = {vsM1_val.mean():.2f}%, std = {vsM1_val.std():.2f}%')
 
     # Boxplot of vsM1 at the valuation date
-    sns.boxplot(data=[vsM1_val])
+    bp_preds_model1 = box_plot(vsM1_val, [0], model_name=name_model1, showfliers=True)
     plt.xticks([0], [name_model2])
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.ylabel('weighted vs' + name_model1 + ' (OCL) (%) at valuation date')
