@@ -2088,15 +2088,15 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             plt.plot(times, [1] * len(times))
             plt.plot(times, pred_cumulative_prop_by_time, color='black', alpha = 0.8)
 
-            if name_model1 is None and name_model2 is None:
-                if include_incurreds:
+            if include_incurreds:
+                if name_model1 is None and name_model2 is None:
                     plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'PCE'])
-
-            else:
-                if include_incurreds:
-                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'PCE'])
+                elif name_model2 is None:
+                    plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, 'PCE'])
                 else:
-                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
+                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'PCE'])
+            elif name_model1 is not None and name_model2 is not None:
+                plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
 
             plt.grid(axis='both', linestyle='--', alpha=0.7)
 
@@ -2128,15 +2128,15 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             plt.plot(times, [1] * len(times))
             plt.plot(times, pred_cumulative_prop_by_time, color='black', alpha = 0.8)
 
-            if name_model1 is None and name_model2 is None:
-                if include_incurreds:
+            if include_incurreds:
+                if name_model1 is None and name_model2 is None:
                     plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'PCE'])
-
-            else:
-                if include_incurreds:
-                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'PCE'])
+                elif name_model2 is None:
+                    plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, 'PCE'])
                 else:
-                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
+                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'PCE'])
+            elif name_model1 is not None and name_model2 is not None:
+                plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
 
             plt.grid(axis='both', linestyle='--', alpha=0.7)
 
@@ -2235,15 +2235,15 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
                 plt.plot(times[:10], [1] * len(times[:10]))
                 plt.plot(times[:10], pred_cumulative_prop_by_time[:10], color='black', alpha = 0.8)
 
-                if name_model1 is None and name_model2 is None:
-                    if include_incurreds:
+                if include_incurreds:
+                    if name_model1 is None and name_model2 is None:
                         plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'PCE'])
-
-                else:
-                    if include_incurreds:
-                        plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'PCE'])
+                    elif name_model2 is None:
+                        plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, 'PCE'])
                     else:
-                        plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
+                        plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'PCE'])
+                elif name_model1 is not None and name_model2 is not None:
+                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
 
                 plt.grid(axis='both', linestyle='--', alpha=0.7)
 
@@ -2268,15 +2268,15 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
                 plt.plot(times[:16], [1] * len(times[:16]))
                 plt.plot(times[:16], pred_cumulative_prop_by_time[:16], color='black', alpha = 0.8)
 
-                if name_model1 is None and name_model2 is None:
-                    if include_incurreds:
+                if include_incurreds:
+                    if name_model1 is None and name_model2 is None:
                         plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'PCE'])
-
-                else:
-                    if include_incurreds:
-                        plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'PCE'])
+                    elif name_model2 is None:
+                        plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, 'PCE'])
                     else:
-                        plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
+                        plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'PCE'])
+                elif name_model1 is not None and name_model2 is not None:
+                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
 
                 plt.grid(axis='both', linestyle='--', alpha=0.7)
 
@@ -2300,15 +2300,15 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             plt.plot(times, [1] * len(times))
             plt.plot(times, pred_cumulative_prop_by_time, color='black', alpha = 0.8)
 
-            if name_model1 is None and name_model2 is None:
-                if include_incurreds:
+            if include_incurreds:
+                if name_model1 is None and name_model2 is None:
                     plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'PCE'])
-
-            else:
-                if include_incurreds:
-                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'PCE'])
+                elif name_model2 is None:
+                    plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, 'PCE'])
                 else:
-                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
+                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'PCE'])
+            elif name_model1 is not None and name_model2 is not None:
+                plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
 
             plt.grid(axis='both', linestyle='--', alpha=0.7)
 
@@ -2340,15 +2340,15 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             plt.plot(times, [1] * len(times))
             plt.plot(times, pred_cumulative_prop_by_time, color='black', alpha = 0.8)
 
-            if name_model1 is None and name_model2 is None:
-                if include_incurreds:
+            if include_incurreds:
+                if name_model1 is None and name_model2 is None:
                     plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'PCE'])
-
-            else:
-                if include_incurreds:
-                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'PCE'])
+                elif name_model2 is None:
+                    plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, 'PCE'])
                 else:
-                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
+                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'PCE'])
+            elif name_model1 is not None and name_model2 is not None:
+                plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
 
             plt.grid(axis='both', linestyle='--', alpha=0.7)
 
@@ -2380,15 +2380,15 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             plt.plot(times, [1] * len(times))
             plt.plot(times, pred_cumulative_prop_by_time, color='black', alpha = 0.8)
 
-            if name_model1 is None and name_model2 is None:
-                if include_incurreds:
+            if include_incurreds:
+                if name_model1 is None and name_model2 is None:
                     plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'PCE'])
-                
-            else:
-                if include_incurreds:
-                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'PCE'])
+                elif name_model2 is None:
+                    plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, 'PCE'])
                 else:
-                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
+                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'PCE'])
+            elif name_model1 is not None and name_model2 is not None:
+                plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
 
             plt.grid(axis='both', linestyle='--', alpha=0.7)
 
@@ -2574,7 +2574,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
 
         plt.show()
 
-def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
+def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str, model_name=None):
     '''Plots aggregate claims, vsInc and weighted vsInc over time, 
        either calendar or development
        
@@ -2584,8 +2584,8 @@ def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str):
        or 'rept_quarter' for reported quarter results'''
 
     results_model1 = extract_performance_by_time(index_data, actuals, preds, incurreds, ocls, time_str)
-    graph_by_time(results_model1, include_incurreds=True)
-    graph_by_time(results_model1, include_incurreds=False)
+    graph_by_time(results_model1, name_model1=model_name, include_incurreds=True)
+    graph_by_time(results_model1, name_model1=model_name, include_incurreds=False)
 
 
 def get_aggregates(actuals, preds, incurreds, ocls):
@@ -3239,7 +3239,7 @@ def train_multiple_initialisations(fp_in, fp_out, iterations, verbose=True):
             
         torch.save(model.state_dict(), fp_out + 'seed ' + fp_in.split('_')[-1][:-1] + ' run ' + str(i) + '.pt')
 
-def test_multiple_initialisations(fp_in, fp_out, iterations, verbose=True):
+def test_multiple_initialisations(fp_in, fp_out, iterations, verbose=True, model_name=None):
 
     hp_comb = load_dictionary(fp_out)
 
@@ -3386,18 +3386,18 @@ def test_multiple_initialisations(fp_in, fp_out, iterations, verbose=True):
 
     # Plotting aggregate claim size by dev quarter and cal quarter (mean across all iterations)
     print('\nAll Predictions:\n')
-    aggregate_by_time(test_set.index, actuals, preds_matrix, incurreds, ocls, 'dev_quarter')
-    aggregate_by_time(test_set.index, actuals, preds_matrix, incurreds, ocls, 'pred_time')
-    aggregate_by_time(test_set.index, actuals, preds_matrix, incurreds, ocls, 'rept_quarter')
-    aggregate_by_time(test_set.index, actuals, preds_matrix, incurreds, ocls, 'acc_quarter')
+    aggregate_by_time(test_set.index, actuals, preds_matrix, incurreds, ocls, 'dev_quarter', model_name)
+    aggregate_by_time(test_set.index, actuals, preds_matrix, incurreds, ocls, 'pred_time', model_name)
+    aggregate_by_time(test_set.index, actuals, preds_matrix, incurreds, ocls, 'rept_quarter', model_name)
+    aggregate_by_time(test_set.index, actuals, preds_matrix, incurreds, ocls, 'acc_quarter', model_name)
 
 
     # Valuation date only
     print('\nValuation Date Predictions:\n')
-    aggregate_by_time(test_set.index, actuals_val, preds_matrix_val, incurreds_val, ocls_val, 'dev_quarter')
-    aggregate_by_time(test_set.index, actuals_val, preds_matrix_val, incurreds_val, ocls_val, 'pred_time')
-    aggregate_by_time(test_set.index, actuals_val, preds_matrix_val, incurreds_val, ocls_val, 'rept_quarter')
-    aggregate_by_time(test_set.index, actuals_val, preds_matrix_val, incurreds_val, ocls_val, 'acc_quarter')
+    aggregate_by_time(test_set.index, actuals_val, preds_matrix_val, incurreds_val, ocls_val, 'dev_quarter', model_name)
+    aggregate_by_time(test_set.index, actuals_val, preds_matrix_val, incurreds_val, ocls_val, 'pred_time', model_name)
+    aggregate_by_time(test_set.index, actuals_val, preds_matrix_val, incurreds_val, ocls_val, 'rept_quarter', model_name)
+    aggregate_by_time(test_set.index, actuals_val, preds_matrix_val, incurreds_val, ocls_val, 'acc_quarter', model_name)
 
     # Histogram of aggregate claims across all prediction times
     plt.hist(aggregate_preds, weights=(np.zeros_like(aggregate_preds) + 1. / 
@@ -3696,16 +3696,16 @@ def plot_results_multiple_datasets(results, name_model1):
     #print(f'preds_matrix: {preds_matrix}')
 
     print('\nAll predictions:\n')
-    aggregate_by_time(results['test_set_index'], actuals_matrix, preds_matrix, incurreds_matrix, ocls_matrix, 'dev_quarter')
-    aggregate_by_time(results['test_set_index'], actuals_matrix, preds_matrix, incurreds_matrix, ocls_matrix, 'pred_time')
-    aggregate_by_time(results['test_set_index'], actuals_matrix, preds_matrix, incurreds_matrix, ocls_matrix, 'rept_quarter')
-    aggregate_by_time(results['test_set_index'], actuals_matrix, preds_matrix, incurreds_matrix, ocls_matrix, 'acc_quarter')
+    aggregate_by_time(results['test_set_index'], actuals_matrix, preds_matrix, incurreds_matrix, ocls_matrix, 'dev_quarter', name_model1)
+    aggregate_by_time(results['test_set_index'], actuals_matrix, preds_matrix, incurreds_matrix, ocls_matrix, 'pred_time', name_model1)
+    aggregate_by_time(results['test_set_index'], actuals_matrix, preds_matrix, incurreds_matrix, ocls_matrix, 'rept_quarter', name_model1)
+    aggregate_by_time(results['test_set_index'], actuals_matrix, preds_matrix, incurreds_matrix, ocls_matrix, 'acc_quarter', name_model1)
 
     print('\nValuation Date Predictions:\n')
-    aggregate_by_time(results['test_set_index_val'], actuals_matrix_val, preds_matrix_val, incurreds_matrix_val, ocls_matrix_val, 'dev_quarter')
-    aggregate_by_time(results['test_set_index_val'], actuals_matrix_val, preds_matrix_val, incurreds_matrix_val, ocls_matrix_val, 'pred_time')
-    aggregate_by_time(results['test_set_index_val'], actuals_matrix_val, preds_matrix_val, incurreds_matrix_val, ocls_matrix_val, 'rept_quarter')
-    aggregate_by_time(results['test_set_index_val'], actuals_matrix_val, preds_matrix_val, incurreds_matrix_val, ocls_matrix_val, 'acc_quarter')
+    aggregate_by_time(results['test_set_index_val'], actuals_matrix_val, preds_matrix_val, incurreds_matrix_val, ocls_matrix_val, 'dev_quarter', name_model1)
+    aggregate_by_time(results['test_set_index_val'], actuals_matrix_val, preds_matrix_val, incurreds_matrix_val, ocls_matrix_val, 'pred_time', name_model1)
+    aggregate_by_time(results['test_set_index_val'], actuals_matrix_val, preds_matrix_val, incurreds_matrix_val, ocls_matrix_val, 'rept_quarter', name_model1)
+    aggregate_by_time(results['test_set_index_val'], actuals_matrix_val, preds_matrix_val, incurreds_matrix_val, ocls_matrix_val, 'acc_quarter', name_model1)
 
 
     # Histogram of distribution of vsInc accuracy
@@ -3798,6 +3798,7 @@ def plot_results_multiple_datasets(results, name_model1):
     fig.set_figwidth(2.4)
     bp_preds_model1 = box_plot(results['ocl_error_preds_val'], [0], model_name=name_model1, showfliers=True)
     bp_incurreds = box_plot(results['ocl_error_incurreds_val'], [1], model_name='PCE', showfliers=True)
+    plt.axhline(0, color='black', linestyle='dashed', linewidth=2)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
 
     if name_model1 is not None:
@@ -3972,7 +3973,7 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     bp_preds_model1 = box_plot(results_model1['ocl_error_preds_val'], [0], model_name=name_model1, showfliers=True)
     bp_preds_model2 = box_plot(results_model2['ocl_error_preds_val'], [1], model_name=name_model2, showfliers=True)
     bp_incurreds = box_plot(results_model1['ocl_error_incurreds_val'], [2], model_name='PCE', showfliers=True)
-    plt.axhline(0, color='blue', linestyle='dashed', linewidth=2)
+    plt.axhline(0, color='black', linestyle='dashed', linewidth=2)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.xticks([0, 1, 2], [name_model1, name_model2, 'PCE'])
     #plt.ylabel('OCL error (%)')
@@ -3984,7 +3985,7 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     bp_preds_model1 = box_plot(results_model1['ocl_error_preds_val'], [0], model_name=name_model1, showfliers=False)
     bp_preds_model2 = box_plot(results_model2['ocl_error_preds_val'], [1], model_name=name_model2, showfliers=False)
     bp_incurreds = box_plot(results_model1['ocl_error_incurreds_val'], [2], model_name='PCE', showfliers=False)
-    plt.axhline(0, color='blue', linestyle='dashed', linewidth=2)
+    plt.axhline(0, color='black', linestyle='dashed', linewidth=2)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.xticks([0, 1, 2], [name_model1, name_model2, 'PCE'])
     #plt.ylabel('OCL error (%)')
@@ -4035,7 +4036,7 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     fig.set_figwidth(2.4)
     bp_preds_model1 = box_plot(results_model1['ocl_error_preds_val'], [0], model_name=name_model1, showfliers=True)
     bp_preds_model2 = box_plot(results_model2['ocl_error_preds_val'], [1], model_name=name_model2, showfliers=True)
-    plt.axhline(0, color='blue', linestyle='dashed', linewidth=2)
+    plt.axhline(0, color='black', linestyle='dashed', linewidth=2)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.xticks([0, 1], [name_model1, name_model2])
     #plt.ylabel('OCL error (%)')
@@ -4047,7 +4048,7 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     fig.set_figwidth(2.4)
     bp_preds_model1 = box_plot(results_model1['ocl_error_preds_val'], [0], model_name=name_model1, showfliers=False)
     bp_preds_model2 = box_plot(results_model2['ocl_error_preds_val'], [1], model_name=name_model2, showfliers=False)
-    plt.axhline(0, color='blue', linestyle='dashed', linewidth=2)
+    plt.axhline(0, color='black', linestyle='dashed', linewidth=2)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.xticks([0, 1], [name_model1, name_model2])
     #plt.ylabel('OCL error (%)')
