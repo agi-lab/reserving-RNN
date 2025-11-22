@@ -239,7 +239,8 @@ median_colours = {'LSTM+': "#5D3EF8",
                   'LSTM': "#0DA1EB",
                   'FNN+': "#F147D5",
                   'FNN': "#07BB43",
-                  'Case Estimates': "#D4B206"}
+                  'Case Estimates': "#D4B206",
+                  'Actuals': "#2BC5AB"}
 
 edge_colours = {'LSTM+': '#332288',
                 'LSTM': "#3B8BB3",
@@ -1881,15 +1882,15 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
     # 1 dataset, 1 prediction
     if isinstance(results_model1['preds'], pd.Series):
         # plotting aggregate preds
-        plt.plot(times, actuals_by_time, label='Actuals')
+        plt.plot(times, actuals_by_time, label='Actuals', color=get_median_colour('Actuals'))
         if name_model1 is None:
             plt.plot(times, results_model1['preds_by_time'], label='Predictions')
         else:
-            plt.plot(times, results_model1['preds_by_time'], label=name_model1)
+            plt.plot(times, results_model1['preds_by_time'], label=name_model1, color=get_median_colour(name_model1))
         if results_model2 is not None:
-            plt.plot(times, results_model2['preds_by_time'], label=name_model2)
+            plt.plot(times, results_model2['preds_by_time'], label=name_model2, color=get_median_colour(name_model2))
         if include_incurreds:
-            plt.plot(times, incurreds_by_time, label='Case Estimates')
+            plt.plot(times, incurreds_by_time, label='Case Estimates', color=get_median_colour('Case Estimates'))
         plt.legend(loc='upper right')
         plt.title('Aggregate claim sizes')
 
@@ -1907,15 +1908,15 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
         plt.show()
 
         # plotting aggregate ocls
-        plt.plot(times, ocls_by_time, label='Actuals')
+        plt.plot(times, ocls_by_time, label='Actuals', color=get_median_colour('Actuals'))
         if name_model1 is None:
             plt.plot(times, results_model1['preds_by_time'] - paids_by_time, label='Predictions')
         else:
-            plt.plot(times, results_model1['preds_by_time'] - paids_by_time, label=name_model1)
+            plt.plot(times, results_model1['preds_by_time'] - paids_by_time, label=name_model1, color=get_median_colour(name_model1))
         if results_model2 is not None:
-            plt.plot(times, results_model2['preds_by_time'] - paids_by_time, label=name_model2)
+            plt.plot(times, results_model2['preds_by_time'] - paids_by_time, label=name_model2, color=get_median_colour(name_model1))
         if include_incurreds:
-            plt.plot(times, incurreds_by_time - paids_by_time, label='Case Estimates')
+            plt.plot(times, incurreds_by_time - paids_by_time, label='Case Estimates', color=get_median_colour('Case Estimates'))
         plt.legend(loc='upper right')
         plt.title('OCL')
 
@@ -1936,9 +1937,9 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
         if name_model1 is None:
             plt.plot(times, results_model1['vsInc_by_time'])
         else:
-            plt.plot(times, results_model1['vsInc_by_time'], label=name_model1)
+            plt.plot(times, results_model1['vsInc_by_time'], label=name_model1, color=get_median_colour(name_model1))
         if results_model2 is not None:
-            plt.plot(times, results_model2['vsInc_by_time'], label=name_model2)
+            plt.plot(times, results_model2['vsInc_by_time'], label=name_model2, color=get_median_colour(name_model1))
             plt.legend(loc='upper right')
 
         plt.ylabel('vsInc (%)')
@@ -1960,9 +1961,9 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
         if name_model1 is None:
             plt.plot(times, results_model1['weighted_vsInc_claimsize_by_time'])
         else:
-            plt.plot(times, results_model1['weighted_vsInc_claimsize_by_time'], label=name_model1)
+            plt.plot(times, results_model1['weighted_vsInc_claimsize_by_time'], label=name_model1, color=get_median_colour(name_model1))
         if results_model2 is not None:
-            plt.plot(times, results_model2['weighted_vsInc_claimsize_by_time'], label=name_model2)
+            plt.plot(times, results_model2['weighted_vsInc_claimsize_by_time'], label=name_model2, color=get_median_colour(name_model1))
             plt.legend(loc='upper right')
 
         plt.ylabel('Weighted vsInc (Claim Size) (%)')
@@ -1984,12 +1985,12 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
         if name_model1 is None:
             plt.plot(times, results_model1['weighted_vsInc_ocl_by_time'])
         else:
-            plt.plot(times, results_model1['weighted_vsInc_ocl_by_time'], label=name_model1)
+            plt.plot(times, results_model1['weighted_vsInc_ocl_by_time'], label=name_model1, color=get_median_colour(name_model1))
         if results_model2 is not None:
-            plt.plot(times, results_model2['weighted_vsInc_ocl_by_time'], label=name_model2)
+            plt.plot(times, results_model2['weighted_vsInc_ocl_by_time'], label=name_model2, color=get_median_colour(name_model1))
             plt.legend(loc='upper right')
 
-        plt.ylabel('Weighted vsInc (OCL) (%)')
+        plt.title('$vsCE_{OCL} (\%)$')
 
         if time_str == 'pred_time':
             plt.xlabel('Calendar quarter')
@@ -2818,7 +2819,7 @@ def get_close_far(actuals, preds, incurreds):
         plt.show()
 
 def analyse_model(model, dataset, hp_comb, 
-                  small_threshold=40000, large_threshold=500000):
+                  small_threshold=40000, large_threshold=500000, model_name=None):
     
     ''' Generates graphical and numerical results for the specified model'''
 
@@ -2869,10 +2870,10 @@ def analyse_model(model, dataset, hp_comb,
     get_heatmap(latest_actuals, latest_preds, nbins=40)
     get_close_far(latest_actuals, latest_preds, latest_incurreds)
 
-    aggregate_by_time(dataset.index, actuals, preds, incurreds, ocls, 'pred_time')
-    aggregate_by_time(dataset.index, actuals, preds, incurreds, ocls, 'dev_quarter')
-    aggregate_by_time(dataset.index, actuals, preds, incurreds, ocls, 'rept_quarter')
-    aggregate_by_time(dataset.index, actuals, preds, incurreds, ocls, 'acc_quarter')
+    aggregate_by_time(dataset.index, actuals, preds, incurreds, ocls, 'pred_time', model_name)
+    aggregate_by_time(dataset.index, actuals, preds, incurreds, ocls, 'dev_quarter', model_name)
+    aggregate_by_time(dataset.index, actuals, preds, incurreds, ocls, 'rept_quarter', model_name)
+    aggregate_by_time(dataset.index, actuals, preds, incurreds, ocls, 'acc_quarter', model_name)
 
 
     # Analysing all claims by the specified development quarters
@@ -2936,28 +2937,32 @@ def analyse_model(model, dataset, hp_comb,
                                                            small_preds, 
                                                            small_incurreds,
                                                            small_ocls, 
-                                                           'pred_time')
+                                                           'pred_time', 
+                                                           model_name)
     
     aggregate_by_time(dataset.index.loc[dataset.index['claim_size'] < 
                                         small_threshold,], small_actuals, 
                                                            small_preds, 
                                                            small_incurreds, 
                                                            small_ocls,
-                                                           'dev_quarter')
+                                                           'dev_quarter', 
+                                                           model_name)
     
     aggregate_by_time(dataset.index.loc[dataset.index['claim_size'] < 
                                         small_threshold,], small_actuals, 
                                                            small_preds, 
                                                            small_incurreds, 
                                                            small_ocls,
-                                                           'rept_quarter')
+                                                           'rept_quarter', 
+                                                           model_name)
     
     aggregate_by_time(dataset.index.loc[dataset.index['claim_size'] < 
                                         small_threshold,], small_actuals, 
                                                            small_preds, 
                                                            small_incurreds, 
                                                            small_ocls,
-                                                           'acc_quarter')
+                                                           'acc_quarter', 
+                                                           model_name)
 
     print('Medium')
     get_aggregates(medium_actuals, medium_preds, medium_incurreds, medium_ocls)
@@ -2982,22 +2987,22 @@ def analyse_model(model, dataset, hp_comb,
     aggregate_by_time(
         dataset.index.loc[(dataset.index['claim_size'] > small_threshold) & 
                           (dataset.index['claim_size'] < large_threshold),], 
-        medium_actuals, medium_preds, medium_incurreds, medium_ocls, 'pred_time')
+        medium_actuals, medium_preds, medium_incurreds, medium_ocls, 'pred_time', model_name)
     
     aggregate_by_time(
         dataset.index.loc[(dataset.index['claim_size'] > small_threshold) & 
                           (dataset.index['claim_size'] < large_threshold),], 
-        medium_actuals, medium_preds, medium_incurreds, medium_ocls, 'dev_quarter')
+        medium_actuals, medium_preds, medium_incurreds, medium_ocls, 'dev_quarter', model_name)
     
     aggregate_by_time(
         dataset.index.loc[(dataset.index['claim_size'] > small_threshold) & 
                           (dataset.index['claim_size'] < large_threshold),], 
-        medium_actuals, medium_preds, medium_incurreds, medium_ocls, 'rept_quarter')
+        medium_actuals, medium_preds, medium_incurreds, medium_ocls, 'rept_quarter', model_name)
     
     aggregate_by_time(
         dataset.index.loc[(dataset.index['claim_size'] > small_threshold) & 
                           (dataset.index['claim_size'] < large_threshold),], 
-        medium_actuals, medium_preds, medium_incurreds, medium_ocls, 'acc_quarter')
+        medium_actuals, medium_preds, medium_incurreds, medium_ocls, 'acc_quarter', model_name)
 
     print('Large')
     get_aggregates(large_actuals, large_preds, large_incurreds, large_ocls)
@@ -3020,16 +3025,16 @@ def analyse_model(model, dataset, hp_comb,
     get_close_far(large_actuals, large_preds, large_incurreds)
 
     aggregate_by_time(dataset.index[dataset.index['claim_size'] > large_threshold], 
-                      large_actuals, large_preds, large_incurreds, large_ocls, 'pred_time')
+                      large_actuals, large_preds, large_incurreds, large_ocls, 'pred_time', model_name)
     
     aggregate_by_time(dataset.index[dataset.index['claim_size'] > large_threshold], 
-                      large_actuals, large_preds, large_incurreds, large_ocls, 'dev_quarter')
+                      large_actuals, large_preds, large_incurreds, large_ocls, 'dev_quarter', model_name)
 
     aggregate_by_time(dataset.index[dataset.index['claim_size'] > large_threshold], 
-                      large_actuals, large_preds, large_incurreds, large_ocls, 'rept_quarter')
+                      large_actuals, large_preds, large_incurreds, large_ocls, 'rept_quarter', model_name)
     
     aggregate_by_time(dataset.index[dataset.index['claim_size'] > large_threshold], 
-                      large_actuals, large_preds, large_incurreds, large_ocls, 'acc_quarter')
+                      large_actuals, large_preds, large_incurreds, large_ocls, 'acc_quarter', model_name)
 
     # Analysing latest predictions by ultimate size of claim
     (small_actuals, small_preds, small_incurreds, small_ocls,
@@ -3099,7 +3104,7 @@ def analyse_model(model, dataset, hp_comb,
     get_heatmap(large_actuals, large_preds, nbins=10)
     get_close_far(large_actuals, large_preds, large_incurreds)
 
-def cross_validate(fp_in, fp_out, fp_hp_comb, hyperparameter_grid, verbose=True):
+def cross_validate(fp_in, fp_out, fp_hp_comb, hyperparameter_grid, verbose=True, model_name=None):
     """
     Trains each model in the grid, tunes using a validation set, chooses the 
     'best' one based on the smallest validation loss and produces numerical 
@@ -3273,7 +3278,7 @@ def cross_validate(fp_in, fp_out, fp_hp_comb, hyperparameter_grid, verbose=True)
         ValueError('Invalid model type. Must be "RNN" or "FNN"')
     
     model.load_state_dict(best_weights)
-    analyse_model(model, val_set, best_hp_comb)
+    analyse_model(model, val_set, best_hp_comb, model_name=model_name)
 
 def train_multiple_initialisations(fp_in, fp_out, iterations, verbose=True):
     '''Retrains the model on the test set multiple times, producing graphical 
