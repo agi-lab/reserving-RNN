@@ -1171,60 +1171,60 @@ def train_network(model, train_data, hp_comb, verbose=True,
                     
                 break
 
-    # if we reach max number of epochs, save the best weights
-    if ((epoch == hp_comb['epochs'] - 1) and 
-        (val_data is not None) and 
-        (cv_loss_list is not None) and 
-        (cv_vsInc_list is not None) and
-        (cv_weighted_vsInc_claimsize_list is not None) and
-        (cv_weighted_vsInc_ocl_list is not None) and
-        (cv_uie_list is not None)):
+        # if we reach max number of epochs, save the best weights
+        if ((epoch == hp_comb['epochs'] - 1) and 
+            (val_data is not None) and 
+            (cv_loss_list is not None) and 
+            (cv_vsInc_list is not None) and
+            (cv_weighted_vsInc_claimsize_list is not None) and
+            (cv_weighted_vsInc_ocl_list is not None) and
+            (cv_uie_list is not None)):
 
-        model.load_state_dict(best_weights)
-        cv_loss_list.append(best_val_loss)
-        cv_vsInc_list.append(best_val_vsInc)
-        cv_weighted_vsInc_claimsize_list.append(best_val_weighted_vsInc_claimsize)
-        cv_weighted_vsInc_ocl_list.append(best_val_weighted_vsInc_ocl)
-        cv_uie_list.append(best_val_uie)
+            model.load_state_dict(best_weights)
+            cv_loss_list.append(best_val_loss)
+            cv_vsInc_list.append(best_val_vsInc)
+            cv_weighted_vsInc_claimsize_list.append(best_val_weighted_vsInc_claimsize)
+            cv_weighted_vsInc_ocl_list.append(best_val_weighted_vsInc_ocl)
+            cv_uie_list.append(best_val_uie)
 
-        if verbose:
-            print(f'\nNo early stopping')
-            print(f'Validation: loss = {round_threshold(best_val_loss):,}, '
-                  f'vsInc = {best_val_vsInc:.2f}%, '
-                  f'weighted vsInc (Claim Size) = {best_val_weighted_vsInc_claimsize:.2f}%, '
-                  f'weighted vsInc (OCL) = {best_val_weighted_vsInc_ocl:.2f}%, '
-                  f'UIE = {best_val_uie:.2f}%\n')
-            
-            # produce epoch graphs
-            '''plt.plot(list(range(epoch + 1)), train_loss_list, label='train loss', color='blue')
-            plt.xlabel('epoch')
-            plt.ylabel('training loss')
-            plt.title('Training loss curve over epochs')
-            plt.show()
+            if verbose:
+                print(f'\nNo early stopping')
+                print(f'Validation: loss = {round_threshold(best_val_loss):,}, '
+                    f'vsInc = {best_val_vsInc:.2f}%, '
+                    f'weighted vsInc (Claim Size) = {best_val_weighted_vsInc_claimsize:.2f}%, '
+                    f'weighted vsInc (OCL) = {best_val_weighted_vsInc_ocl:.2f}%, '
+                    f'UIE = {best_val_uie:.2f}%\n')
+                
+                # produce epoch graphs
+                '''plt.plot(list(range(epoch + 1)), train_loss_list, label='train loss', color='blue')
+                plt.xlabel('epoch')
+                plt.ylabel('training loss')
+                plt.title('Training loss curve over epochs')
+                plt.show()
 
-            plt.plot(list(range(epoch + 1)), val_loss_list, label='val loss', color='orange')
-            plt.xlabel('epoch')
-            plt.ylabel('validation loss')
-            plt.title('Validation loss curve over epochs')
-            plt.show()
+                plt.plot(list(range(epoch + 1)), val_loss_list, label='val loss', color='orange')
+                plt.xlabel('epoch')
+                plt.ylabel('validation loss')
+                plt.title('Validation loss curve over epochs')
+                plt.show()
 
-            # plotting vsInc curves together because they are hopefully on similar scales
-            plt.plot(list(range(epoch + 1)), train_weighted_vsInc_ocl_list, label='train vsInc (OCL)', color='blue')
-            plt.plot(list(range(epoch + 1)), val_weighted_vsInc_ocl_list, label='val vsInc (OCL)', color='orange')
-            plt.xlabel('epoch')
-            plt.ylabel('vsInc (OCL)')
-            plt.title('vsInc (OCL) curve over epochs')
-            plt.legend()
-            plt.show()
+                # plotting vsInc curves together because they are hopefully on similar scales
+                plt.plot(list(range(epoch + 1)), train_weighted_vsInc_ocl_list, label='train vsInc (OCL)', color='blue')
+                plt.plot(list(range(epoch + 1)), val_weighted_vsInc_ocl_list, label='val vsInc (OCL)', color='orange')
+                plt.xlabel('epoch')
+                plt.ylabel('vsInc (OCL)')
+                plt.title('vsInc (OCL) curve over epochs')
+                plt.legend()
+                plt.show()
 
-            # ignoring the first 5 epochs for aggregate error curves because they are too noisy
-            plt.plot(list(range(5, epoch + 1)), train_agg_clmsize_percent_error_model[5:], label='train agg error', color='blue')
-            plt.plot(list(range(5, epoch + 1)), val_agg_clmsize_percent_error_model[5:], label='val agg error', color='orange')
-            plt.xlabel('epoch')
-            plt.ylabel('aggregate error (%)')
-            plt.title('Aggregate error curve over epochs')
-            plt.legend()
-            plt.show()'''
+                # ignoring the first 5 epochs for aggregate error curves because they are too noisy
+                plt.plot(list(range(5, epoch + 1)), train_agg_clmsize_percent_error_model[5:], label='train agg error', color='blue')
+                plt.plot(list(range(5, epoch + 1)), val_agg_clmsize_percent_error_model[5:], label='val agg error', color='orange')
+                plt.xlabel('epoch')
+                plt.ylabel('aggregate error (%)')
+                plt.title('Aggregate error curve over epochs')
+                plt.legend()
+                plt.show()'''
             
 def test_network(model, test_data, hp_comb, preds_list=None, verbose=True, 
                  val_loss_list=None, val_vsInc_list=None, 
