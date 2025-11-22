@@ -2769,7 +2769,7 @@ def get_close_far(actuals, preds, incurreds):
                  weights=(np.zeros_like(winning_margins) + 1. / 
                           winning_margins.size), 
                  alpha=0.5, 
-                 label='winning margin', 
+                 label='Winning Margin', 
                  color='blue')
         
         #plt.legend(loc='upper right')
@@ -2784,7 +2784,7 @@ def get_close_far(actuals, preds, incurreds):
                  weights=(np.zeros_like(losing_margins) + 1. / 
                           losing_margins.size), 
                  alpha=0.5, 
-                 label='losing margin', 
+                 label='Losing Margin', 
                  color='red')
         
         #plt.legend(loc='upper right')
@@ -2803,13 +2803,13 @@ def get_close_far(actuals, preds, incurreds):
         plt.hist(winning_margins,
                  bins=bins,
                  alpha=0.5, 
-                 label='winning margin', 
+                 label='Winning Margin', 
                  color='blue')
         
         plt.hist(losing_margins,
                  bins=bins, 
                  alpha=0.5, 
-                 label='losing margin', 
+                 label='Losing Margin', 
                  color='red')
         
         plt.legend(loc='upper right')
