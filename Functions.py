@@ -239,19 +239,19 @@ median_colours = {'LSTM+': "#5D3EF8",
                   'LSTM': "#0DA1EB",
                   'FNN+': "#F147D5",
                   'FNN': "#07BB43",
-                  'PCE': "#D4B206"}
+                  'Case Estimates': "#D4B206"}
 
 edge_colours = {'LSTM+': '#332288',
                 'LSTM': "#3B8BB3",
                 'FNN+': '#AA4499',
                 'FNN': '#117733',
-                'PCE': "#B19A27"}
+                'Case Estimates': "#B19A27"}
 
 fill_colours = {'LSTM+': "#B1A2FC",
                 'LSTM': '#88CCEE',
                 'FNN+': "#F8B9EE",
                 'FNN': "#B3F7CA",
-                'PCE': "#F1E296"}
+                'Case Estimates': "#F1E296"}
 
 def get_median_colour(model_name):
     if model_name in median_colours.keys():
@@ -1889,7 +1889,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
         if results_model2 is not None:
             plt.plot(times, results_model2['preds_by_time'], label=name_model2)
         if include_incurreds:
-            plt.plot(times, incurreds_by_time, label='PCE')
+            plt.plot(times, incurreds_by_time, label='Case Estimates')
         plt.legend(loc='upper right')
         plt.title('Aggregate claim sizes')
 
@@ -1915,9 +1915,9 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
         if results_model2 is not None:
             plt.plot(times, results_model2['preds_by_time'] - paids_by_time, label=name_model2)
         if include_incurreds:
-            plt.plot(times, incurreds_by_time - paids_by_time, label='PCE')
+            plt.plot(times, incurreds_by_time - paids_by_time, label='Case Estimates')
         plt.legend(loc='upper right')
-        plt.title('OCLs')
+        plt.title('OCL')
 
         if time_str == 'pred_time':
             plt.xlabel('Calendar quarter')
@@ -2084,17 +2084,17 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             if results_model2 is not None:
                 bp_preds_model2 = box_plot(results_model2['preds_over_actuals_by_time'], positions=times, model_name=name_model2)
             if include_incurreds:
-                bp_incurreds = box_plot(incurreds_over_actuals_by_time, positions=times, model_name='PCE')
+                bp_incurreds = box_plot(incurreds_over_actuals_by_time, positions=times, model_name='Case Estimates')
             plt.plot(times, [1] * len(times))
             plt.plot(times, pred_cumulative_prop_by_time, color='black', alpha = 0.8)
 
             if include_incurreds:
                 if name_model1 is None and name_model2 is None:
-                    plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'PCE'])
+                    plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'Case Estimates'])
                 elif name_model2 is None:
-                    plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, 'PCE'])
+                    plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, 'Case Estimates'])
                 else:
-                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'PCE'])
+                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'Case Estimates'])
             elif name_model1 is not None and name_model2 is not None:
                 plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
 
@@ -2124,17 +2124,17 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             if results_model2 is not None:
                 bp_preds_model2 = box_plot(results_model2['ocl_preds_over_actuals_by_time'], positions=times, model_name=name_model2)
             if include_incurreds:
-                bp_incurreds = box_plot(ocl_incurreds_over_actuals_by_time, positions=times, model_name='PCE')
+                bp_incurreds = box_plot(ocl_incurreds_over_actuals_by_time, positions=times, model_name='Case Estimates')
             plt.plot(times, [1] * len(times))
             plt.plot(times, pred_cumulative_prop_by_time, color='black', alpha = 0.8)
 
             if include_incurreds:
                 if name_model1 is None and name_model2 is None:
-                    plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'PCE'])
+                    plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'Case Estimates'])
                 elif name_model2 is None:
-                    plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, 'PCE'])
+                    plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, 'Case Estimates'])
                 else:
-                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'PCE'])
+                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'Case Estimates'])
             elif name_model1 is not None and name_model2 is not None:
                 plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
 
@@ -2155,7 +2155,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             else:
                 raise ValueError('Invalid time_str')
             
-            plt.title('Aggregate OCLs (as proportion of actual)')
+            plt.title('OCL (as proportion of actual)')
             plt.ylabel('Ratio')
 
             plt.ylim(0, 2.5)
@@ -2164,7 +2164,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
 
             # Boxplot with incurreds only
             if include_incurreds:
-                bp_incurreds = box_plot(ocl_incurreds_over_actuals_by_time, positions=times, model_name='PCE')
+                bp_incurreds = box_plot(ocl_incurreds_over_actuals_by_time, positions=times, model_name='Case Estimates')
                 plt.plot(times, [1] * len(times))
                 plt.plot(times, pred_cumulative_prop_by_time, color='black', alpha = 0.8)
 
@@ -2185,7 +2185,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
                 else:
                     raise ValueError('Invalid time_str')
                 
-                plt.title('Aggregate OCLs (as proportion of actual)')
+                plt.title('OCL (as proportion of actual)')
                 plt.ylabel('Ratio')
 
                 plt.ylim(0, 2.5)
@@ -2193,7 +2193,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
                 plt.show()
 
                 if time_str == 'dev_quarter':
-                    bp_incurreds = box_plot([sublist[:10] for sublist in ocl_incurreds_over_actuals_by_time], positions=times[:10], model_name='PCE')
+                    bp_incurreds = box_plot([sublist[:10] for sublist in ocl_incurreds_over_actuals_by_time], positions=times[:10], model_name='Case Estimates')
                     plt.plot(times[:10], [1] * len(times[:10]))
                     plt.plot(times[:10], pred_cumulative_prop_by_time[:10], color='black', alpha = 0.8)
 
@@ -2202,14 +2202,14 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
                     plt.xticks(ticks, ticks)
                     
                     plt.xlabel('Quarters since notification')
-                    plt.title('Aggregate OCLs (as proportion of actual)')
+                    plt.title('OCL (as proportion of actual)')
                     plt.ylabel('Ratio')
 
                     plt.ylim(0, 1.5)
 
                     plt.show()
 
-                    bp_incurreds = box_plot([sublist[:16] for sublist in ocl_incurreds_over_actuals_by_time], positions=times[:16], model_name='PCE')
+                    bp_incurreds = box_plot([sublist[:16] for sublist in ocl_incurreds_over_actuals_by_time], positions=times[:16], model_name='Case Estimates')
                     plt.plot(times[:16], [1] * len(times[:16]))
                     plt.plot(times[:16], pred_cumulative_prop_by_time[:16], color='black', alpha = 0.8)
 
@@ -2218,7 +2218,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
                     plt.xticks(ticks, ticks)
                     
                     plt.xlabel('Quarters since notification')
-                    plt.title('Aggregate OCLs (as proportion of actual)')
+                    plt.title('OCL (as proportion of actual)')
                     plt.ylabel('Ratio')
 
                     plt.ylim(0, 1.5)
@@ -2231,17 +2231,17 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
                 if results_model2 is not None:
                     bp_preds_model2 = box_plot([sublist[:10] for sublist in results_model2['ocl_preds_over_actuals_by_time']], positions=times[:10], model_name=name_model2)
                 if include_incurreds:
-                    bp_incurreds = box_plot([sublist[:10] for sublist in ocl_incurreds_over_actuals_by_time], positions=times[:10], model_name='PCE')
+                    bp_incurreds = box_plot([sublist[:10] for sublist in ocl_incurreds_over_actuals_by_time], positions=times[:10], model_name='Case Estimates')
                 plt.plot(times[:10], [1] * len(times[:10]))
                 plt.plot(times[:10], pred_cumulative_prop_by_time[:10], color='black', alpha = 0.8)
 
                 if include_incurreds:
                     if name_model1 is None and name_model2 is None:
-                        plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'PCE'])
+                        plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'Case Estimates'])
                     elif name_model2 is None:
-                        plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, 'PCE'])
+                        plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, 'Case Estimates'])
                     else:
-                        plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'PCE'])
+                        plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'Case Estimates'])
                 elif name_model1 is not None and name_model2 is not None:
                     plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
 
@@ -2251,7 +2251,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
                 plt.xticks(ticks, ticks)
                 
                 plt.xlabel('Quarters since notification')
-                plt.title('Aggregate OCLs (as proportion of actual)')
+                plt.title('OCL (as proportion of actual)')
                 plt.ylabel('Ratio')
 
                 plt.ylim(0, 1.5)
@@ -2262,17 +2262,17 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
                 if results_model2 is not None:
                     bp_preds_model2 = box_plot([sublist[:10] for sublist in results_model2['ocl_preds_over_actuals_by_time']], positions=times[:10], model_name=name_model2, alpha=0.5)
                 if include_incurreds:
-                    bp_incurreds = box_plot([sublist[:10] for sublist in ocl_incurreds_over_actuals_by_time], positions=times[:10], model_name='PCE', alpha=0.5)
+                    bp_incurreds = box_plot([sublist[:10] for sublist in ocl_incurreds_over_actuals_by_time], positions=times[:10], model_name='Case Estimates', alpha=0.5)
                 plt.plot(times[:10], [1] * len(times[:10]))
                 plt.plot(times[:10], pred_cumulative_prop_by_time[:10], color='black', alpha = 0.8)
 
                 if include_incurreds:
                     if name_model1 is None and name_model2 is None:
-                        plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'PCE'])
+                        plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'Case Estimates'])
                     elif name_model2 is None:
-                        plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, 'PCE'])
+                        plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, 'Case Estimates'])
                     else:
-                        plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'PCE'])
+                        plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'Case Estimates'])
                 elif name_model1 is not None and name_model2 is not None:
                     plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
 
@@ -2282,7 +2282,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
                 plt.xticks(ticks, ticks)
                 
                 plt.xlabel('Quarters since notification')
-                plt.title('Aggregate OCLs (as proportion of actual)')
+                plt.title('OCL (as proportion of actual)')
                 plt.ylabel('Ratio')
 
                 plt.ylim(0, 1.5)
@@ -2294,17 +2294,17 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
                 if results_model2 is not None:
                     bp_preds_model2 = box_plot([sublist[:16] for sublist in results_model2['ocl_preds_over_actuals_by_time']], positions=times[:16], model_name=name_model2)
                 if include_incurreds:
-                    bp_incurreds = box_plot([sublist[:16] for sublist in ocl_incurreds_over_actuals_by_time], positions=times[:16], model_name='PCE')
+                    bp_incurreds = box_plot([sublist[:16] for sublist in ocl_incurreds_over_actuals_by_time], positions=times[:16], model_name='Case Estimates')
                 plt.plot(times[:16], [1] * len(times[:16]))
                 plt.plot(times[:16], pred_cumulative_prop_by_time[:16], color='black', alpha = 0.8)
 
                 if include_incurreds:
                     if name_model1 is None and name_model2 is None:
-                        plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'PCE'])
+                        plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'Case Estimates'])
                     elif name_model2 is None:
-                        plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, 'PCE'])
+                        plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, 'Case Estimates'])
                     else:
-                        plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'PCE'])
+                        plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'Case Estimates'])
                 elif name_model1 is not None and name_model2 is not None:
                     plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
 
@@ -2314,7 +2314,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
                 plt.xticks(ticks, ticks)
                 
                 plt.xlabel('Quarters since notification')
-                plt.title('Aggregate OCLs (as proportion of actual)')
+                plt.title('OCL (as proportion of actual)')
                 plt.ylabel('Ratio')
 
                 plt.ylim(0, 1.5)
@@ -2325,17 +2325,17 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
                 if results_model2 is not None:
                     bp_preds_model2 = box_plot([sublist[:16] for sublist in results_model2['ocl_preds_over_actuals_by_time']], positions=times[:16], model_name=name_model2, alpha=0.5)
                 if include_incurreds:
-                    bp_incurreds = box_plot([sublist[:16] for sublist in ocl_incurreds_over_actuals_by_time], positions=times[:16], model_name='PCE', alpha=0.5)
+                    bp_incurreds = box_plot([sublist[:16] for sublist in ocl_incurreds_over_actuals_by_time], positions=times[:16], model_name='Case Estimates', alpha=0.5)
                 plt.plot(times[:16], [1] * len(times[:16]))
                 plt.plot(times[:16], pred_cumulative_prop_by_time[:16], color='black', alpha = 0.8)
 
                 if include_incurreds:
                     if name_model1 is None and name_model2 is None:
-                        plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'PCE'])
+                        plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'Case Estimates'])
                     elif name_model2 is None:
-                        plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, 'PCE'])
+                        plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, 'Case Estimates'])
                     else:
-                        plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'PCE'])
+                        plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'Case Estimates'])
                 elif name_model1 is not None and name_model2 is not None:
                     plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
 
@@ -2345,7 +2345,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
                 plt.xticks(ticks, ticks)
                 
                 plt.xlabel('Quarters since notification')
-                plt.title('Aggregate OCLs (as proportion of actual)')
+                plt.title('OCL (as proportion of actual)')
                 plt.ylabel('Ratio')
 
                 plt.ylim(0, 1.5)
@@ -2357,17 +2357,17 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             if results_model2 is not None:
                 bp_preds_model2 = box_plot(results_model2['ocl_preds_over_actuals_by_time'], positions=times, model_name=name_model2, alpha=0.5)
             if include_incurreds:
-                bp_incurreds = box_plot(ocl_incurreds_over_actuals_by_time, positions=times, model_name='PCE', alpha=0.5)
+                bp_incurreds = box_plot(ocl_incurreds_over_actuals_by_time, positions=times, model_name='Case Estimates', alpha=0.5)
             plt.plot(times, [1] * len(times))
             plt.plot(times, pred_cumulative_prop_by_time, color='black', alpha = 0.8)
 
             if include_incurreds:
                 if name_model1 is None and name_model2 is None:
-                    plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'PCE'])
+                    plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'Case Estimates'])
                 elif name_model2 is None:
-                    plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, 'PCE'])
+                    plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, 'Case Estimates'])
                 else:
-                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'PCE'])
+                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'Case Estimates'])
             elif name_model1 is not None and name_model2 is not None:
                 plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
 
@@ -2388,7 +2388,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             else:
                 raise ValueError('Invalid time_str')
             
-            plt.title('Aggregate OCLs (as proportion of actual)')
+            plt.title('OCL (as proportion of actual)')
             plt.ylabel('Ratio')
             plt.show()
 
@@ -2397,17 +2397,17 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             if results_model2 is not None:
                 bp_preds_model2 = box_plot(results_model2['ocl_preds_over_actuals_by_time'], positions=times+0.2, model_name=name_model2, widths=0.3)
             if include_incurreds:
-                bp_incurreds = box_plot(ocl_incurreds_over_actuals_by_time, positions=times, model_name='PCE')
+                bp_incurreds = box_plot(ocl_incurreds_over_actuals_by_time, positions=times, model_name='Case Estimates')
             plt.plot(times, [1] * len(times))
             plt.plot(times, pred_cumulative_prop_by_time, color='black', alpha = 0.8)
 
             if include_incurreds:
                 if name_model1 is None and name_model2 is None:
-                    plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'PCE'])
+                    plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'Case Estimates'])
                 elif name_model2 is None:
-                    plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, 'PCE'])
+                    plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, 'Case Estimates'])
                 else:
-                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'PCE'])
+                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'Case Estimates'])
             elif name_model1 is not None and name_model2 is not None:
                 plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
 
@@ -2428,7 +2428,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             else:
                 raise ValueError('Invalid time_str')
             
-            plt.title('Aggregate OCLs (as proportion of actual)')
+            plt.title('OCL (as proportion of actual)')
             plt.ylabel('Ratio')
             plt.show()
 
@@ -2437,17 +2437,17 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             if results_model2 is not None:
                 bp_preds_model2 = box_plot(results_model2['ocl_preds_over_actuals_by_time_adjusted'], positions=times, model_name=name_model2)
             if include_incurreds:
-                bp_incurreds = box_plot(ocl_incurreds_over_actuals_by_time, positions=times, model_name='PCE')
+                bp_incurreds = box_plot(ocl_incurreds_over_actuals_by_time, positions=times, model_name='Case Estimates')
             plt.plot(times, [1] * len(times))
             plt.plot(times, pred_cumulative_prop_by_time, color='black', alpha = 0.8)
 
             if include_incurreds:
                 if name_model1 is None and name_model2 is None:
-                    plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'PCE'])
+                    plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], ['Predictions', 'Case Estimates'])
                 elif name_model2 is None:
-                    plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, 'PCE'])
+                    plt.legend([bp_preds_model1["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, 'Case Estimates'])
                 else:
-                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'PCE'])
+                    plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0], bp_incurreds["boxes"][0]], [name_model1, name_model2, 'Case Estimates'])
             elif name_model1 is not None and name_model2 is not None:
                 plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
 
@@ -2468,7 +2468,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             else:
                 raise ValueError('Invalid time_str')
             
-            plt.title('Aggregate OCLs (as proportion of actual) (manually adjusted negatives to 0)')
+            plt.title('OCL (as proportion of actual) (manually adjusted negatives to 0)')
             plt.ylabel('Ratio')
             plt.show()
 
@@ -2511,7 +2511,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
         if name_model1 is not None and name_model2 is not None:
             plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
 
-        plt.title('$vsPCE_{OCL} (\%)$')
+        plt.title('$vsCE_{OCL} (\%)$')
         #plt.ylabel('Weighted vsInc (OCL) (%)')
         plt.grid(axis='both', linestyle='--', alpha=0.7)
 
@@ -2548,7 +2548,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             plt.xticks(ticks, ticks)
             
             plt.xlabel('Quarters since notification')
-            plt.title('$vsPCE_{OCL} (\%)$')
+            plt.title('$vsCE_{OCL} (\%)$')
             #plt.ylabel('Weighted vsInc (OCL) (%)')
             
             plt.show()
@@ -2566,7 +2566,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             plt.xticks(ticks, ticks)
             
             plt.xlabel('Quarters since notification')
-            plt.title('$vsPCE_{OCL} (\%)$')
+            plt.title('$vsCE_{OCL} (\%)$')
             #plt.ylabel('Weighted vsInc (OCL) (%)')
             
             plt.show()
@@ -2585,7 +2585,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             plt.xticks(ticks, ticks)
             
             plt.xlabel('Quarters since notification')
-            plt.title('$vsPCE_{OCL} (\%)$')
+            plt.title('$vsCE_{OCL} (\%)$')
             #plt.ylabel('Weighted vsInc (OCL) (%)')
 
             plt.show()
@@ -2603,7 +2603,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             plt.xticks(ticks, ticks)
             
             plt.xlabel('Quarters since notification')
-            plt.title('$vsPCE_{OCL} (\%)$')
+            plt.title('$vsCE_{OCL} (\%)$')
             #plt.ylabel('Weighted vsInc (OCL) (%)')
 
             plt.show()
@@ -3882,7 +3882,7 @@ def plot_results_multiple_datasets(results, name_model1):
     bp_preds_model1 = box_plot(results['weighted_vsInc_ocl_val'], [0], model_name=name_model1, showfliers=True)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     #plt.ylabel('weighted vsInc (OCL) (%)')
-    plt.title('$vsPCE_{OCL} (\%)$')
+    plt.title('$vsCE_{OCL} (\%)$')
     if name_model1 is not None:
         plt.xticks([0], [name_model1])
     plt.show()
@@ -3890,14 +3890,14 @@ def plot_results_multiple_datasets(results, name_model1):
     # Boxplots of OCL errors at valuation date
     fig = plt.figure(figsize=(2.4, 6.4))
     bp_preds_model1 = box_plot(results['ocl_error_preds_val'], [0], model_name=name_model1, showfliers=True)
-    bp_incurreds = box_plot(results['ocl_error_incurreds_val'], [1], model_name='PCE', showfliers=True)
+    bp_incurreds = box_plot(results['ocl_error_incurreds_val'], [1], model_name='Case Estimates', showfliers=True)
     plt.axhline(0, color='black', linestyle='dashed', linewidth=2)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
 
     if name_model1 is not None:
-        plt.xticks([0, 1], [name_model1, 'PCE'])
+        plt.xticks([0, 1], [name_model1, 'Case Estimates'])
     else:
-        plt.xticks([0, 1], ['Predictions', 'PCE'])
+        plt.xticks([0, 1], ['Predictions', 'Case Estimates'])
     #plt.ylabel('OCL error (%)')
     plt.title('$OCLerr (\%)$')
     plt.show()
@@ -3917,23 +3917,23 @@ def plot_results_multiple_datasets(results, name_model1):
 
     # Boxplots of MALE and MSLE
     bp_preds_model1 = box_plot(results['MALE_preds'], [0], model_name=name_model1, showfliers=True)
-    bp_incurreds = box_plot(results['MALE_incurreds'], [1], model_name='PCE', showfliers=True)
+    bp_incurreds = box_plot(results['MALE_incurreds'], [1], model_name='Case Estimates', showfliers=True)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     if name_model1 is not None:
-        plt.xticks([0, 1], [name_model1, 'PCE'])
+        plt.xticks([0, 1], [name_model1, 'Case Estimates'])
     else:
-        plt.xticks([0, 1], ['Predictions', 'PCE'])
+        plt.xticks([0, 1], ['Predictions', 'Case Estimates'])
     plt.title('MALE across multiple datasets')
     plt.ylabel('MALE')
     plt.show()
 
     bp_preds_model1 = box_plot(results['MSLE_preds'], [0], model_name=name_model1, showfliers=True)
-    bp_incurreds = box_plot(results['MSLE_incurreds'], [1], model_name='PCE', showfliers=True)
+    bp_incurreds = box_plot(results['MSLE_incurreds'], [1], model_name='Case Estimates', showfliers=True)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     if name_model1 is not None:
-        plt.xticks([0, 1], [name_model1, 'PCE'])
+        plt.xticks([0, 1], [name_model1, 'Case Estimates'])
     else:
-        plt.xticks([0, 1], ['Predictions', 'PCE'])
+        plt.xticks([0, 1], ['Predictions', 'Case Estimates'])
     plt.title('MSLE across multiple datasets')
     plt.ylabel('MSLE')
     plt.show()
@@ -3941,24 +3941,24 @@ def plot_results_multiple_datasets(results, name_model1):
     # Boxplots of MALE and MSLE at valuation date
     fig = plt.figure(figsize=(2.4, 6.4))
     bp_preds_model1 = box_plot(results['MALE_preds_val'], [0], model_name=name_model1, showfliers=True)
-    bp_incurreds = box_plot(results['MALE_incurreds_val'], [1], model_name='PCE', showfliers=True)
+    bp_incurreds = box_plot(results['MALE_incurreds_val'], [1], model_name='Case Estimates', showfliers=True)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     if name_model1 is not None:
-        plt.xticks([0, 1], [name_model1, 'PCE'])
+        plt.xticks([0, 1], [name_model1, 'Case Estimates'])
     else:
-        plt.xticks([0, 1], ['Predictions', 'PCE'])
+        plt.xticks([0, 1], ['Predictions', 'Case Estimates'])
     plt.title('MALE')
     #plt.ylabel('MALE')
     plt.show()
 
     fig = plt.figure(figsize=(2.4, 6.4))
     bp_preds_model1 = box_plot(results['MSLE_preds_val'], [0], model_name=name_model1, showfliers=True)
-    bp_incurreds = box_plot(results['MSLE_incurreds_val'], [1], model_name='PCE', showfliers=True)
+    bp_incurreds = box_plot(results['MSLE_incurreds_val'], [1], model_name='Case Estimates', showfliers=True)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     if name_model1 is not None:
-        plt.xticks([0, 1], [name_model1, 'PCE'])
+        plt.xticks([0, 1], [name_model1, 'Case Estimates'])
     else:
-        plt.xticks([0, 1], ['Predictions', 'PCE'])
+        plt.xticks([0, 1], ['Predictions', 'Case Estimates'])
     plt.title('MSLE')
     #plt.ylabel('MSLE')
     plt.show()
@@ -4056,16 +4056,16 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     plt.xticks([0, 1], [name_model1, name_model2])
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     #plt.ylabel('weighted vsInc (OCL) (%)')
-    plt.title('$vsPCE_{OCL} (\%)$')
+    plt.title('$vsCE_{OCL} (\%)$')
     plt.show()
 
     # Boxplots of OCL errors at valuation date with incurreds
     bp_preds_model1 = box_plot(results_model1['ocl_error_preds_val'], [0], model_name=name_model1, showfliers=True)
     bp_preds_model2 = box_plot(results_model2['ocl_error_preds_val'], [1], model_name=name_model2, showfliers=True)
-    bp_incurreds = box_plot(results_model1['ocl_error_incurreds_val'], [2], model_name='PCE', showfliers=True)
+    bp_incurreds = box_plot(results_model1['ocl_error_incurreds_val'], [2], model_name='Case Estimates', showfliers=True)
     plt.axhline(0, color='black', linestyle='dashed', linewidth=2)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
-    plt.xticks([0, 1, 2], [name_model1, name_model2, 'PCE'])
+    plt.xticks([0, 1, 2], [name_model1, name_model2, 'Case Estimates'])
     #plt.ylabel('OCL error (%)')
     plt.title('$OCLerr (\%)$')
     plt.show()
@@ -4074,10 +4074,10 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     # Boxplots of OCL errors at valuation date (excl. outliers)
     bp_preds_model1 = box_plot(results_model1['ocl_error_preds_val'], [0], model_name=name_model1, showfliers=False)
     bp_preds_model2 = box_plot(results_model2['ocl_error_preds_val'], [1], model_name=name_model2, showfliers=False)
-    bp_incurreds = box_plot(results_model1['ocl_error_incurreds_val'], [2], model_name='PCE', showfliers=False)
+    bp_incurreds = box_plot(results_model1['ocl_error_incurreds_val'], [2], model_name='Case Estimates', showfliers=False)
     plt.axhline(0, color='black', linestyle='dashed', linewidth=2)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
-    plt.xticks([0, 1, 2], [name_model1, name_model2, 'PCE'])
+    plt.xticks([0, 1, 2], [name_model1, name_model2, 'Case Estimates'])
     #plt.ylabel('OCL error (%)')
     plt.title('$OCLerr (\%)$ (excl. outliers)')
     plt.show()
@@ -4085,18 +4085,18 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     # Boxplots of MALE and MSLE
     bp_preds_model1 = box_plot(results_model1['MALE_preds'], [0], model_name=name_model1, showfliers=True)
     bp_preds_model2 = box_plot(results_model2['MALE_preds'], [1], model_name=name_model2, showfliers=True)
-    bp_incurreds = box_plot(results_model1['MALE_incurreds'], [2], model_name='PCE', showfliers=True)
+    bp_incurreds = box_plot(results_model1['MALE_incurreds'], [2], model_name='Case Estimates', showfliers=True)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
-    plt.xticks([0, 1, 2], [name_model1, name_model2, 'PCE'])
+    plt.xticks([0, 1, 2], [name_model1, name_model2, 'Case Estimates'])
     plt.title('MALE across multiple datasets')
     plt.ylabel('MALE')
     plt.show()
 
     bp_preds_model1 = box_plot(results_model1['MSLE_preds'], [0], model_name=name_model1, showfliers=True)
     bp_preds_model2 = box_plot(results_model2['MSLE_preds'], [1], model_name=name_model2, showfliers=True)
-    bp_incurreds = box_plot(results_model1['MSLE_incurreds'], [2], model_name='PCE', showfliers=True)
+    bp_incurreds = box_plot(results_model1['MSLE_incurreds'], [2], model_name='Case Estimates', showfliers=True)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
-    plt.xticks([0, 1, 2], [name_model1, name_model2, 'PCE'])
+    plt.xticks([0, 1, 2], [name_model1, name_model2, 'Case Estimates'])
     plt.title('MSLE across multiple datasets')
     plt.ylabel('MSLE')
     plt.show()
@@ -4104,18 +4104,18 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     # Boxplots of MALE and MSLE at valuation date
     bp_preds_model1 = box_plot(results_model1['MALE_preds_val'], [0], model_name=name_model1, showfliers=True)
     bp_preds_model2 = box_plot(results_model2['MALE_preds_val'], [1], model_name=name_model2, showfliers=True)
-    bp_incurreds = box_plot(results_model1['MALE_incurreds_val'], [2], model_name='PCE', showfliers=True)
+    bp_incurreds = box_plot(results_model1['MALE_incurreds_val'], [2], model_name='Case Estimates', showfliers=True)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
-    plt.xticks([0, 1, 2], [name_model1, name_model2, 'PCE'])
+    plt.xticks([0, 1, 2], [name_model1, name_model2, 'Case Estimates'])
     plt.title('MALE')
     #plt.ylabel('MALE')
     plt.show()
 
     bp_preds_model1 = box_plot(results_model1['MSLE_preds_val'], [0], model_name=name_model1, showfliers=True)
     bp_preds_model2 = box_plot(results_model2['MSLE_preds_val'], [1], model_name=name_model2, showfliers=True)
-    bp_incurreds = box_plot(results_model1['MSLE_incurreds_val'], [2], model_name='PCE', showfliers=True)
+    bp_incurreds = box_plot(results_model1['MSLE_incurreds_val'], [2], model_name='Case Estimates', showfliers=True)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
-    plt.xticks([0, 1, 2], [name_model1, name_model2, 'PCE'])
+    plt.xticks([0, 1, 2], [name_model1, name_model2, 'Case Estimates'])
     plt.title('MSLE')
     #plt.ylabel('MSLE')
     plt.show()
