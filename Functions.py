@@ -536,8 +536,6 @@ class ClaimsRNN(nn.Module):
         self.relu = nn.ReLU() # used for feed-forward hidden layer, should change this so different activation functions can be specified
         self.include_covariates = include_covariates
         self.normalisation = normalisation # boolean for whether to use batch and layer normalisation
-        #self.nConcatUnits = self.nHidden // 4 # this will be the number of units of both RNN and static inputs before concatenating
-
 
         # nFeatures is the number of features to be input into the RNN layer
         self.nFeatures = 3 + self.include_incurreds # 4 features with ocl, 3 without
@@ -551,9 +549,7 @@ class ClaimsRNN(nn.Module):
 
         self.dropout_layer = nn.Dropout(self.dropout)
 
-        if self.normalisation:
-            #self.layer_norm1 = nn.LayerNorm(self.nFeatures)
-            
+        if self.normalisation:            
             self.rnn_layers = nn.ModuleList()
             self.layer_norms_rnn = nn.ModuleList()
 
@@ -576,7 +572,6 @@ class ClaimsRNN(nn.Module):
 
             self.layer_norm2 = nn.LayerNorm(nHidden)
 
-            #self.batch_norm1 = nn.BatchNorm1d(self.nConcatUnits)
             self.batch_norm2 = nn.BatchNorm1d(self.nstatic)
             self.batch_norm3 = nn.BatchNorm1d(self.nHidden // 2)
 
@@ -597,9 +592,6 @@ class ClaimsRNN(nn.Module):
             else:
                 raise ValueError("type must be 'RNN', 'LSTM' or 'GRU'")
 
-        # RNN output is reduced in size
-        #self.fc1 = nn.Linear(nHidden, self.nConcatUnits)
-
         if self.include_covariates:
             self.embedding_sev = nn.Embedding(6, self.embedding_dim) # 6 possible injury severities, output 2 dimensions
             self.embedding_age = nn.Embedding(5, self.embedding_dim) # 5 possible ages, output 2 dimensions
@@ -617,9 +609,7 @@ class ClaimsRNN(nn.Module):
                 out, ht = rnn(out)  # RNN output
 
                 if i < self.nLayers - 1:
-                    #print(f'Layer {i} output shape: {out.batch_sizes.size(0)}')
                     out, nrows = pad_packed_sequence(out, batch_first=True)
-                    #print(f'Layer {i} padded output shape: {out.shape}')
                     out = self.layer_norms_rnn[i](out)
                     out = self.dropout_layer(out)
                     out = pack_padded_sequence(out, nrows, batch_first=True, enforce_sorted=False)
@@ -740,7 +730,7 @@ class ClaimsFNN(nn.Module):
             out = x
 
         if self.final_activation == 'exponential':
-            out = torch.exp(self.nn_output_layer(out).squeeze(-1)) # * x[:, -1].squeeze(-1)
+            out = torch.exp(self.nn_output_layer(out).squeeze(-1))
         elif self.final_activation == 'softplus':
             out = F.softplus(self.nn_output_layer(out).squeeze(-1))
         elif self.final_activation == 'linear':
@@ -755,7 +745,8 @@ class ClaimsFNN(nn.Module):
 def train_network(model, train_data, hp_comb, verbose=True, 
                   val_data=None, cv_loss_list=None, cv_vsInc_list=None, 
                   cv_weighted_vsInc_claimsize_list=None, 
-                  cv_weighted_vsInc_ocl_list=None, cv_uie_list=None):
+                  cv_weighted_vsInc_ocl_list=None, cv_uie_list=None,
+                  epoch_graphs=False):
     
     """
     Args:
@@ -889,15 +880,10 @@ def train_network(model, train_data, hp_comb, verbose=True,
                     true_ocls = true_ocls.to(device).float()
                     incurred_copys = incurred_copys.to(device).float()
 
-                    #print(f'type of pred_times: {type(pred_times)}')
-                    #print(f'dimension of pred_times: {pred_times.shape}')
-
                     packed_extra = torch.stack((pred_time_copys, dev_quarters, acc_quarter_copys, num_paymentss, mean_paymentss,
                                     vco_paymentss, max_payments, incurred_copys, num_revisionss, mean_revisionss, max_revisions,
                                     total_revisionss, prop_upward_revisionss, legal_reps,
                                     injury_severities, claimant_ages), dim=1).to(device)
-
-                    #print(f'dimension of packed_extra: {packed_extra.shape}')
 
                 elif hp_comb['include_incurreds'] and not hp_comb['include_covariates']:
                     (pred_time_copys, dev_quarters, acc_quarter_copys, num_paymentss, mean_paymentss, 
@@ -991,9 +977,6 @@ def train_network(model, train_data, hp_comb, verbose=True,
                 preds = raw_preds
                 ultimates = targets
 
-            #print(f'mean raw preds: {raw_preds.mean()}')
-            #print(f'mean raw targets: {targets.mean()}')
-
             # converting raw preds and targets to be in terms of ultimate claim size
             if train_data.target_col == 'claim_size':
                 preds = preds
@@ -1017,9 +1000,6 @@ def train_network(model, train_data, hp_comb, verbose=True,
 
             else:
                 ValueError('Invalid target, must be "claim_size", "log_claim_size", "log_m", "true_ocl" or "log_true_ocl"')
-
-            #print(f'mean raw preds: {raw_preds.mean()}, mean raw targets: {targets.mean()}')
-            #print(f'mean preds: {preds.mean()}, mean ultimates: {ultimates.mean()}, mean incurreds: {latest_incurreds.mean()}')
 
             # Loss and gradient descent
             if isinstance(hp_comb['criterion'], MSLE_with_penalty):
@@ -1140,36 +1120,37 @@ def train_network(model, train_data, hp_comb, verbose=True,
                           f'UIE = {best_val_uie:.2f}%\n')
                     
                     # produce epoch graphs
-                    '''plt.plot(list(range(epoch + 1)), train_loss_list, label='train loss', color='blue')
-                    plt.xlabel('epoch')
-                    plt.ylabel('training loss')
-                    plt.title('Training loss curve over epochs')
-                    plt.show()
+                    if epoch_graphs == True:
+                        plt.plot(list(range(epoch + 1)), train_loss_list, label='train loss', color='blue')
+                        plt.xlabel('epoch')
+                        plt.ylabel('training loss')
+                        plt.title('Training loss curve over epochs')
+                        plt.show()
 
-                    plt.plot(list(range(epoch + 1)), val_loss_list, label='val loss', color='orange')
-                    plt.xlabel('epoch')
-                    plt.ylabel('validation loss')
-                    plt.title('Validation loss curve over epochs')
-                    plt.show()
+                        plt.plot(list(range(epoch + 1)), val_loss_list, label='val loss', color='orange')
+                        plt.xlabel('epoch')
+                        plt.ylabel('validation loss')
+                        plt.title('Validation loss curve over epochs')
+                        plt.show()
 
-                    # plotting vsInc curves together because they are hopefully on similar scales
-                    plt.plot(list(range(epoch + 1)), train_weighted_vsInc_ocl_list, label='train vsInc (OCL)', color='blue')
-                    plt.plot(list(range(epoch + 1)), val_weighted_vsInc_ocl_list, label='val vsInc (OCL)', color='orange')
-                    plt.xlabel('epoch')
-                    plt.ylabel('vsInc (OCL)')
-                    plt.title('vsInc (OCL) curve over epochs')
-                    plt.legend()
-                    plt.show()
+                        # plotting vsInc curves together because they are hopefully on similar scales
+                        plt.plot(list(range(epoch + 1)), train_weighted_vsInc_ocl_list, label='train vsInc (OCL)', color='blue')
+                        plt.plot(list(range(epoch + 1)), val_weighted_vsInc_ocl_list, label='val vsInc (OCL)', color='orange')
+                        plt.xlabel('epoch')
+                        plt.ylabel('vsInc (OCL)')
+                        plt.title('vsInc (OCL) curve over epochs')
+                        plt.legend()
+                        plt.show()
 
-                    # ignoring the first 5 epochs for aggregate error curves because they are too noisy
-                    plt.plot(list(range(5, epoch + 1)), train_agg_clmsize_percent_error_model[5:], label='train agg error', color='blue')
-                    plt.plot(list(range(5, epoch + 1)), val_agg_clmsize_percent_error_model[5:], label='val agg error', color='orange')
-                    plt.xlabel('epoch')
-                    plt.ylabel('aggregate error (%)')
-                    plt.title('Aggregate error curve over epochs')
-                    plt.legend()
-                    plt.show()'''
-                    
+                        # ignoring the first 5 epochs for aggregate error curves because they are too noisy
+                        plt.plot(list(range(5, epoch + 1)), train_agg_clmsize_percent_error_model[5:], label='train agg error', color='blue')
+                        plt.plot(list(range(5, epoch + 1)), val_agg_clmsize_percent_error_model[5:], label='val agg error', color='orange')
+                        plt.xlabel('epoch')
+                        plt.ylabel('aggregate error (%)')
+                        plt.title('Aggregate error curve over epochs')
+                        plt.legend()
+                        plt.show()
+                        
                 break
 
         # if we reach max number of epochs, save the best weights
@@ -1197,35 +1178,36 @@ def train_network(model, train_data, hp_comb, verbose=True,
                     f'UIE = {best_val_uie:.2f}%\n')
                 
                 # produce epoch graphs
-                '''plt.plot(list(range(epoch + 1)), train_loss_list, label='train loss', color='blue')
-                plt.xlabel('epoch')
-                plt.ylabel('training loss')
-                plt.title('Training loss curve over epochs')
-                plt.show()
+                if epoch_graphs == True:
+                    plt.plot(list(range(epoch + 1)), train_loss_list, label='train loss', color='blue')
+                    plt.xlabel('epoch')
+                    plt.ylabel('training loss')
+                    plt.title('Training loss curve over epochs')
+                    plt.show()
 
-                plt.plot(list(range(epoch + 1)), val_loss_list, label='val loss', color='orange')
-                plt.xlabel('epoch')
-                plt.ylabel('validation loss')
-                plt.title('Validation loss curve over epochs')
-                plt.show()
+                    plt.plot(list(range(epoch + 1)), val_loss_list, label='val loss', color='orange')
+                    plt.xlabel('epoch')
+                    plt.ylabel('validation loss')
+                    plt.title('Validation loss curve over epochs')
+                    plt.show()
 
-                # plotting vsInc curves together because they are hopefully on similar scales
-                plt.plot(list(range(epoch + 1)), train_weighted_vsInc_ocl_list, label='train vsInc (OCL)', color='blue')
-                plt.plot(list(range(epoch + 1)), val_weighted_vsInc_ocl_list, label='val vsInc (OCL)', color='orange')
-                plt.xlabel('epoch')
-                plt.ylabel('vsInc (OCL)')
-                plt.title('vsInc (OCL) curve over epochs')
-                plt.legend()
-                plt.show()
+                    # plotting vsInc curves together because they are hopefully on similar scales
+                    plt.plot(list(range(epoch + 1)), train_weighted_vsInc_ocl_list, label='train vsInc (OCL)', color='blue')
+                    plt.plot(list(range(epoch + 1)), val_weighted_vsInc_ocl_list, label='val vsInc (OCL)', color='orange')
+                    plt.xlabel('epoch')
+                    plt.ylabel('vsInc (OCL)')
+                    plt.title('vsInc (OCL) curve over epochs')
+                    plt.legend()
+                    plt.show()
 
-                # ignoring the first 5 epochs for aggregate error curves because they are too noisy
-                plt.plot(list(range(5, epoch + 1)), train_agg_clmsize_percent_error_model[5:], label='train agg error', color='blue')
-                plt.plot(list(range(5, epoch + 1)), val_agg_clmsize_percent_error_model[5:], label='val agg error', color='orange')
-                plt.xlabel('epoch')
-                plt.ylabel('aggregate error (%)')
-                plt.title('Aggregate error curve over epochs')
-                plt.legend()
-                plt.show()'''
+                    # ignoring the first 5 epochs for aggregate error curves because they are too noisy
+                    plt.plot(list(range(5, epoch + 1)), train_agg_clmsize_percent_error_model[5:], label='train agg error', color='blue')
+                    plt.plot(list(range(5, epoch + 1)), val_agg_clmsize_percent_error_model[5:], label='val agg error', color='orange')
+                    plt.xlabel('epoch')
+                    plt.ylabel('aggregate error (%)')
+                    plt.title('Aggregate error curve over epochs')
+                    plt.legend()
+                    plt.show()
             
 def test_network(model, test_data, hp_comb, preds_list=None, verbose=True, 
                  val_loss_list=None, val_vsInc_list=None, 
@@ -1285,9 +1267,6 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
                 true_ocls = true_ocls.to(device).float()
                 pred_time_copys = pred_time_copys.unsqueeze(1).to(device).float()
                 acc_quarter_copys = acc_quarter_copys.unsqueeze(1).to(device).float()
-
-                #print(datapoints)
-                #print(nrowss)
 
                 packed = pack_padded_sequence(datapoints, nrowss, 
                                             enforce_sorted=False, 
@@ -1449,9 +1428,6 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
 
             else:
                 ValueError('Invalid target, must be "claim_size", "log_claim_size", "log_m", "true_ocl" or "log_true_ocl"')
-
-            #print(f'mean raw preds: {raw_preds.mean()}, mean raw targets: {targets.mean()}')
-            #print(f'mean preds: {preds.mean()}, mean ultimates: {ultimates.mean()}, mean incurreds: {latest_incurreds.mean()}')
 
             # Loss and gradient descent
             if isinstance(hp_comb['criterion'], MSLE_with_penalty):
@@ -1814,10 +1790,6 @@ def extract_performance_by_time(index_data, actuals, preds, incurreds, ocls, tim
                     
                     ocl_incurreds_over_actuals_by_time[i, index] = (np.sum(incurreds[i][indicator]) - paids_by_time[i, index]) / ocls_by_time[i, index] if ocls_by_time[i, index] > 0 else 1
 
-                # adjusts negative ocl predictions to 0
-                #ocl_preds_over_actuals_by_time_adjusted =  ocl_preds_over_actuals_by_time.copy()
-                #ocl_preds_over_actuals_by_time_adjusted[ocl_preds_over_actuals_by_time_adjusted < 0] = 0
-
     results = {
         'actuals_by_time': actuals_by_time,
         'incurreds_by_time': incurreds_by_time,
@@ -1853,7 +1825,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
     # Converting aggregate OCLs to proportion
     if not (isinstance(results_model1['preds'], pd.Series) or isinstance(results_model1['actuals'], pd.Series)):
         # multiple datasets
-        # sum over multiple datasets (could change this later to have a boxplot of claim counts)
+        # sum over multiple datasets
         ocls_by_time = np.sum(results_model1['ocls_by_time'], axis=0)
     
     else:
@@ -1862,9 +1834,6 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
 
     pred_cumulative_ocl_by_time = np.cumsum(ocls_by_time)
     pred_cumulative_prop_by_time = pred_cumulative_ocl_by_time / pred_cumulative_ocl_by_time[-1]
-
-    #print(pred_cumulative_ocl_by_time)
-    #print(pred_cumulative_prop_by_time)
 
     times = results_model1['times']
     time_str = results_model1['time_str']
@@ -2513,7 +2482,6 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
 
         plt.title('$vsCE_{OCL} (\%)$')
-        #plt.ylabel('Weighted vsInc (OCL) (%)')
         plt.grid(axis='both', linestyle='--', alpha=0.7)
 
         ticks = [int(time) for time in times if (time % 5 == 0 and len(times) < 50) 
@@ -2550,8 +2518,6 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             
             plt.xlabel('Quarters since notification')
             plt.title('$vsCE_{OCL} (\%)$')
-            #plt.ylabel('Weighted vsInc (OCL) (%)')
-            
             plt.show()
 
             bp_preds_model1 = box_plot([sublist[:10] for sublist in results_model1['weighted_vsInc_ocl_by_time']], positions=times[:10], model_name=name_model1, alpha=0.5)
@@ -2567,9 +2533,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             plt.xticks(ticks, ticks)
             
             plt.xlabel('Quarters since notification')
-            plt.title('$vsCE_{OCL} (\%)$')
-            #plt.ylabel('Weighted vsInc (OCL) (%)')
-            
+            plt.title('$vsCE_{OCL} (\%)$')            
             plt.show()
 
         # Boxplot of weighted vsInc by ocl (capped at dev quarter 16)
@@ -2587,8 +2551,6 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             
             plt.xlabel('Quarters since notification')
             plt.title('$vsCE_{OCL} (\%)$')
-            #plt.ylabel('Weighted vsInc (OCL) (%)')
-
             plt.show()
 
             bp_preds_model1 = box_plot([sublist[:16] for sublist in results_model1['weighted_vsInc_ocl_by_time']], positions=times[:16], model_name=name_model1, alpha=0.5)
@@ -2605,8 +2567,6 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             
             plt.xlabel('Quarters since notification')
             plt.title('$vsCE_{OCL} (\%)$')
-            #plt.ylabel('Weighted vsInc (OCL) (%)')
-
             plt.show()
 
 
@@ -2773,7 +2733,6 @@ def get_close_far(actuals, preds, incurreds):
                  label='Winning Margin', 
                  color='blue')
         
-        #plt.legend(loc='upper right')
         plt.xlabel('Winning Margin (%)')
         plt.ylabel('Frequency')
         plt.show()
@@ -2788,7 +2747,6 @@ def get_close_far(actuals, preds, incurreds):
                  label='Losing Margin', 
                  color='red')
         
-        #plt.legend(loc='upper right')
         plt.xlabel('Losing Margin (%)')
         plt.ylabel('Frequency')
         plt.show()
@@ -2837,8 +2795,6 @@ def analyse_model(model, dataset, hp_comb,
     print(f'Weighted vsInc (Claim Size): {get_weighted_vsInc_claimsize(actuals, preds, incurreds):.2f}%')
     print(f'Weighted vsInc (OCL): {get_weighted_vsInc_ocl(actuals, preds, incurreds, ocls):.2f}%')
     print(f'number of preds: {len(preds)}')
-
-    #print(f'preds: min = {preds.min()}, mean = {preds.mean()}, max = {preds.max()}')
 
     get_heatmap(actuals, preds, nbins=50)
     get_close_far(actuals, preds, incurreds)
@@ -3452,15 +3408,10 @@ def test_multiple_initialisations(fp_in, fp_out, iterations, verbose=True, model
                         'MSLE_preds_val': MSLE_preds_val})
 
     results = pd.DataFrame(results)
-    #print(results)
 
     # formatting data for graphs by time
     preds_matrix = results['preds'].tolist()
     preds_matrix_val = results['preds_val'].tolist()
-
-    # manually capping claim size predictions
-    # largest in one of the datasets was $6m, so setting cap at $100m
-    #preds_matrix[preds_matrix > 1e8] = 1e8
 
     # Assessing distribution of aggregate claims
     aggregate_preds = np.array(preds_matrix).sum(axis=1)
@@ -3793,8 +3744,6 @@ def plot_results_multiple_datasets(results, name_model1):
     incurreds_matrix_val = results['incurreds_val'].tolist()
     ocls_matrix_val = results['ocls_val'].tolist()
 
-    #print(f'preds_matrix: {preds_matrix}')
-
     print('\nAll predictions:\n')
     aggregate_by_time(results['test_set_index'], actuals_matrix, preds_matrix, incurreds_matrix, ocls_matrix, 'dev_quarter', name_model1)
     aggregate_by_time(results['test_set_index'], actuals_matrix, preds_matrix, incurreds_matrix, ocls_matrix, 'pred_time', name_model1)
@@ -3886,7 +3835,6 @@ def plot_results_multiple_datasets(results, name_model1):
     fig = plt.figure(figsize=(1.2, 6.4))
     bp_preds_model1 = box_plot(results['weighted_vsInc_ocl_val'], [0], model_name=name_model1, showfliers=True)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
-    #plt.ylabel('weighted vsInc (OCL) (%)')
     plt.title('$vsCE_{OCL} (\%)$')
     if name_model1 is not None:
         plt.xticks([0], [name_model1])
@@ -3903,7 +3851,6 @@ def plot_results_multiple_datasets(results, name_model1):
         plt.xticks([0, 1], [name_model1, 'Case Estimates'])
     else:
         plt.xticks([0, 1], ['Predictions', 'Case Estimates'])
-    #plt.ylabel('OCL error (%)')
     plt.title('$OCLerr (\%)$')
     plt.show()
 
@@ -3953,7 +3900,6 @@ def plot_results_multiple_datasets(results, name_model1):
     else:
         plt.xticks([0, 1], ['Predictions', 'Case Estimates'])
     plt.title('MALE')
-    #plt.ylabel('MALE')
     plt.show()
 
     fig = plt.figure(figsize=(2.4, 6.4))
@@ -3965,7 +3911,6 @@ def plot_results_multiple_datasets(results, name_model1):
     else:
         plt.xticks([0, 1], ['Predictions', 'Case Estimates'])
     plt.title('MSLE')
-    #plt.ylabel('MSLE')
     plt.show()
 
 def test_multiple_datasets(fp_py, fp_out, seed_base, max_iter, name_model1=None):
@@ -4060,7 +4005,6 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     bp_preds_model2 = box_plot(results_model2['weighted_vsInc_ocl_val'], [1], model_name=name_model2, showfliers=True)    
     plt.xticks([0, 1], [name_model1, name_model2])
     plt.grid(axis='y', linestyle='--', alpha=0.7)
-    #plt.ylabel('weighted vsInc (OCL) (%)')
     plt.title('$vsCE_{OCL} (\%)$')
     plt.show()
 
@@ -4071,7 +4015,6 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     plt.axhline(0, color='black', linestyle='dashed', linewidth=2)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.xticks([0, 1, 2], [name_model1, name_model2, 'Case Estimates'])
-    #plt.ylabel('OCL error (%)')
     plt.title('$OCLerr (\%)$')
     plt.show()
 
@@ -4083,7 +4026,6 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     plt.axhline(0, color='black', linestyle='dashed', linewidth=2)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.xticks([0, 1, 2], [name_model1, name_model2, 'Case Estimates'])
-    #plt.ylabel('OCL error (%)')
     plt.title('$OCLerr (\%)$ (excl. outliers)')
     plt.show()
 
@@ -4113,7 +4055,6 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.xticks([0, 1, 2], [name_model1, name_model2, 'Case Estimates'])
     plt.title('MALE')
-    #plt.ylabel('MALE')
     plt.show()
 
     bp_preds_model1 = box_plot(results_model1['MSLE_preds_val'], [0], model_name=name_model1, showfliers=True)
@@ -4122,7 +4063,6 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.xticks([0, 1, 2], [name_model1, name_model2, 'Case Estimates'])
     plt.title('MSLE')
-    #plt.ylabel('MSLE')
     plt.show()
 
     ### Without Incurreds
@@ -4133,7 +4073,6 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     plt.axhline(0, color='black', linestyle='dashed', linewidth=2)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.xticks([0, 1], [name_model1, name_model2])
-    #plt.ylabel('OCL error (%)')
     plt.title('$OCLerr (\%)$')
     plt.show()
 
@@ -4144,7 +4083,6 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     plt.axhline(0, color='black', linestyle='dashed', linewidth=2)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.xticks([0, 1], [name_model1, name_model2])
-    #plt.ylabel('OCL error (%)')
     plt.title('$OCLerr (\%)$ (excl. outliers)')
     plt.show()
 
@@ -4155,7 +4093,6 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.xticks([0, 1], [name_model1, name_model2])
     plt.title('MALE')
-    #plt.ylabel('MALE')
     plt.show()
 
     fig = plt.figure(figsize=(2.4, 6.4))
@@ -4164,7 +4101,6 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.xticks([0, 1], [name_model1, name_model2])
     plt.title('MSLE')
-    #plt.ylabel('MSLE')
     plt.show()
 
     # printing summary statistics
