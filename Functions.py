@@ -3552,6 +3552,22 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     results_model1 = results_multiple_datasets(fp_py, fp_out_model1, seed_base, max_iter)
     results_model2 = results_multiple_datasets(fp_py, fp_out_model2, seed_base, max_iter)
 
+    # printing summary statistics
+    print(f'\n{name_model1} OCL error: mean = {results_model1["ocl_error_preds_val"].mean():.2f}%, std = {results_model1["ocl_error_preds_val"].std():.2f}%')
+    print(f'{name_model2} OCL error: mean = {results_model2["ocl_error_preds_val"].mean():.2f}%, std = {results_model2["ocl_error_preds_val"].std():.2f}%')
+    print(f'Incurreds OCL error: mean = {results_model1["ocl_error_incurreds_val"].mean():.2f}%, std = {results_model1["ocl_error_incurreds_val"].std():.2f}%')
+
+    print(f'\n{name_model1} MALE: mean = {results_model1["MALE_preds_val"].mean():.4f}, std = {results_model1["MALE_preds_val"].std():.4f}')
+    print(f'{name_model2} MALE: mean = {results_model2["MALE_preds_val"].mean():.4f}, std = {results_model2["MALE_preds_val"].std():.4f}')
+    print(f'Incurreds MALE: mean = {results_model1["MALE_incurreds_val"].mean():.4f}, std = {results_model1["MALE_incurreds_val"].std():.4f}')
+
+    print(f'\n{name_model1} MSLE: mean = {results_model1["MSLE_preds_val"].mean():.4f}, std = {results_model1["MSLE_preds_val"].std():.4f}')
+    print(f'{name_model2} MSLE: mean = {results_model2["MSLE_preds_val"].mean():.4f}, std = {results_model2["MSLE_preds_val"].std():.4f}')
+    print(f'Incurreds MSLE: mean = {results_model1["MSLE_incurreds_val"].mean():.4f}, std = {results_model1["MSLE_incurreds_val"].std():.4f}')
+
+    print(f'\n{name_model1} weighted vsCE (OCL): mean = {results_model1["weighted_vsCE_ocl_val"].mean():.2f}%, std = {results_model1["weighted_vsCE_ocl_val"].std():.2f}%')
+    print(f'{name_model2} weighted vsCE (OCL): mean = {results_model2["weighted_vsCE_ocl_val"].mean():.2f}%, std = {results_model2["weighted_vsCE_ocl_val"].std():.2f}%')
+
     plot_multiple_models_by_time(results_model1, results_model2, name_model1, name_model2)
     
     # Boxplot of weighted vsCE (OCL) at the valuation date
@@ -3638,22 +3654,6 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     plt.xticks([0, 1], [name_model1, name_model2])
     plt.title('MSLE')
     plt.show()
-
-    # printing summary statistics
-    print(f'\n{name_model1} OCL error: mean = {results_model1["ocl_error_preds_val"].mean():.2f}%, std = {results_model1["ocl_error_preds_val"].std():.2f}%')
-    print(f'{name_model2} OCL error: mean = {results_model2["ocl_error_preds_val"].mean():.2f}%, std = {results_model2["ocl_error_preds_val"].std():.2f}%')
-    print(f'Incurreds OCL error: mean = {results_model1["ocl_error_incurreds_val"].mean():.2f}%, std = {results_model1["ocl_error_incurreds_val"].std():.2f}%')
-
-    print(f'\n{name_model1} MALE: mean = {results_model1["MALE_preds_val"].mean():.4f}, std = {results_model1["MALE_preds_val"].std():.4f}')
-    print(f'{name_model2} MALE: mean = {results_model2["MALE_preds_val"].mean():.4f}, std = {results_model2["MALE_preds_val"].std():.4f}')
-    print(f'Incurreds MALE: mean = {results_model1["MALE_incurreds_val"].mean():.4f}, std = {results_model1["MALE_incurreds_val"].std():.4f}')
-
-    print(f'\n{name_model1} MSLE: mean = {results_model1["MSLE_preds_val"].mean():.4f}, std = {results_model1["MSLE_preds_val"].std():.4f}')
-    print(f'{name_model2} MSLE: mean = {results_model2["MSLE_preds_val"].mean():.4f}, std = {results_model2["MSLE_preds_val"].std():.4f}')
-    print(f'Incurreds MSLE: mean = {results_model1["MSLE_incurreds_val"].mean():.4f}, std = {results_model1["MSLE_incurreds_val"].std():.4f}')
-
-    print(f'\n{name_model1} weighted vsCE (OCL): mean = {results_model1["weighted_vsCE_ocl_val"].mean():.2f}%, std = {results_model1["weighted_vsCE_ocl_val"].std():.2f}%')
-    print(f'{name_model2} weighted vsCE (OCL): mean = {results_model2["weighted_vsCE_ocl_val"].mean():.2f}%, std = {results_model2["weighted_vsCE_ocl_val"].std():.2f}%')
 
     # generating vsM1 statistics
     vsM1_val = np.array([get_weighted_vsCE_ocl(results_model1['actuals_val'][i],
