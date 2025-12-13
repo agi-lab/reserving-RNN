@@ -3310,6 +3310,8 @@ def results_multiple_datasets(fp_py, fp_out, seed_base, max_iter):
         # load saved weights
         model.load_state_dict(torch.load(fp_out + 'seed ' + str(i + seed_base) + '.pt'))
 
+        print(f'seed {str(i + seed_base)}')
+
         actuals, preds, incurreds, ocls = get_preds_actuals(model, test_set, hp_comb, True)
 
         paids = actuals - ocls
@@ -3319,7 +3321,7 @@ def results_multiple_datasets(fp_py, fp_out, seed_base, max_iter):
             (actuals_validation, 
              preds_validation, 
              incurreds_validation, 
-             ocls_validation) = get_preds_actuals(model, val_set, hp_comb, True)
+             ocls_validation) = get_preds_actuals(model, val_set, hp_comb, verbose=False)
 
             preds = preds * bias_correction_factor(preds_validation, actuals_validation)
             
@@ -3367,6 +3369,30 @@ def results_multiple_datasets(fp_py, fp_out, seed_base, max_iter):
         MALE_incurreds_val = MeanAbsoluteLogError()(incurreds_val - paids_val, ocls_val)
         MSLE_incurreds_val = MeanSquaredLogError()(incurreds_val - paids_val, ocls_val)
 
+        #print(f'preds_val: {preds_val.sum()}')
+        #print(f'actuals_val: {actuals_val.sum()}')
+        #print(f'ocls_val: {ocls_val.sum()}')
+        #print(f'ocl_preds_val: {ocl_preds_val.sum()}')
+
+        #print(test_set.index['dev_quarter'])
+        #print(test_set.index['pred_time'])
+        #print(preds[test_set.index['pred_time'] == val_date])
+        #print(preds[test_set.index['dev_quarter'] >= 30])
+
+        '''dev_quarters_q30 = test_set.index.loc[(test_set.index['pred_time'] == val_date) & (test_set.index['dev_quarter'] >= 30), 'dev_quarter']
+        preds_q30 = preds[(test_set.index['pred_time'] == val_date) & (test_set.index['dev_quarter'] >= 30)]
+        actuals_q30 = actuals[(test_set.index['pred_time'] == val_date) & (test_set.index['dev_quarter'] >= 30)]
+        ocls_q30 = ocls[(test_set.index['pred_time'] == val_date) & (test_set.index['dev_quarter'] >= 30)]
+        preds_ocl_q30 = preds[(test_set.index['pred_time'] == val_date) & (test_set.index['dev_quarter'] >= 30)] - paids[(test_set.index['pred_time'] == val_date) & (test_set.index['dev_quarter'] >= 30)]
+
+        print(f"preds_q30: {preds_q30.sum()}")
+        print(f"actuals_q30: {actuals_q30.sum()}")
+        print(f"ocls_q30: {ocls_q30.sum()}")
+        print(f"preds_ocl_q30: {preds_ocl_q30.sum()}")
+
+        q30_df = pd.DataFrame({'dev_quarter': dev_quarters_q30, 'preds': preds_q30, 'actuals': actuals_q30, 'ocls': ocls_q30, 'preds_ocl': preds_ocl_q30})
+        q30_df.to_csv('Results/Complexity 2 Inflated/predictions seed ' + str(i + seed_base) + '.csv')'''
+
         results.append({'Seed': i + seed_base, 
                         'test_set_index': test_set.index,
                         'test_set_index_val': test_set_index_val,
@@ -3398,6 +3424,7 @@ def results_multiple_datasets(fp_py, fp_out, seed_base, max_iter):
                         'MSLE_incurreds_val': MSLE_incurreds_val})
 
     results = pd.DataFrame(results)
+
     return results
 
 def plot_results_multiple_datasets(results, name_model1):
