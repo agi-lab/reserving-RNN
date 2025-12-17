@@ -2228,10 +2228,39 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             plt.ylabel('Ratio')
             plt.show()
 
-        # boxplot of weighted vsCE by claim size
-        bp_preds_model1 = box_plot(results_model1['weighted_vsCE_claimsize_by_time'], positions=times, model_name=name_model1)
+        # boxplot of vsCE
+        bp_preds_model1 = box_plot(results_model1['vsCE_by_time'], positions=times, model_name=name_model1, alpha=0.5)
         if results_model2 is not None:
-            bp_preds_model2 = box_plot(results_model2['weighted_vsCE_claimsize_by_time'], positions=times, model_name=name_model2)
+            bp_preds_model2 = box_plot(results_model2['vsCE_by_time'], positions=times, model_name=name_model2, alpha=0.5)
+        plt.plot(times, pred_cumulative_prop_by_time * 100, color='black', alpha = 0.7)
+
+        if name_model1 is not None and name_model2 is not None:
+            plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
+
+        plt.title('$\mathrm{vsCE}$ (%)')
+        plt.grid(axis='both', linestyle='--', alpha=0.7)
+
+        ticks = [int(time) for time in times if (time % 5 == 0 and len(times) < 50) 
+                    or (time % 10 == 0 and len(times) >= 50)]
+        plt.xticks(ticks, ticks)
+        
+        if time_str == 'pred_time':
+            plt.xlabel('Calendar quarter')
+        elif time_str == 'dev_quarter':
+            plt.xlabel('Quarters since notification')
+        elif time_str == 'rept_quarter':
+            plt.xlabel('Reported quarter')
+        elif time_str == 'acc_quarter':
+            plt.xlabel('Accident quarter')
+        else:
+            raise ValueError('Invalid time_str')
+
+        plt.show()
+
+        # boxplot of weighted vsCE by claim size
+        bp_preds_model1 = box_plot(results_model1['weighted_vsCE_claimsize_by_time'], positions=times, model_name=name_model1, alpha=0.5)
+        if results_model2 is not None:
+            bp_preds_model2 = box_plot(results_model2['weighted_vsCE_claimsize_by_time'], positions=times, model_name=name_model2, alpha=0.5)
         plt.plot(times, pred_cumulative_prop_by_time * 100, color='black', alpha = 0.7)
 
         if name_model1 is not None and name_model2 is not None:
@@ -2257,36 +2286,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
 
         plt.show()
 
-        # boxplot of weighted vsCE by ocl with transparency for overlapping boxes
-        bp_preds_model1 = box_plot(results_model1['weighted_vsCE_ocl_by_time'], positions=times, model_name=name_model1)
-        if results_model2 is not None:
-            bp_preds_model2 = box_plot(results_model2['weighted_vsCE_ocl_by_time'], positions=times, model_name=name_model2)
-        plt.plot(times, pred_cumulative_prop_by_time * 100, color='black', alpha = 0.7)
-
-        if name_model1 is not None and name_model2 is not None:
-            plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
-
-        plt.title('$\mathrm{vsCE}_{\mathrm{OCL}}$ (%)')
-        plt.grid(axis='both', linestyle='--', alpha=0.7)
-
-        ticks = [int(time) for time in times if (time % 5 == 0 and len(times) < 50) 
-                    or (time % 10 == 0 and len(times) >= 50)]
-        plt.xticks(ticks, ticks)
-        
-        if time_str == 'pred_time':
-            plt.xlabel('Calendar quarter')
-        elif time_str == 'dev_quarter':
-            plt.xlabel('Quarters since notification')
-        elif time_str == 'rept_quarter':
-            plt.xlabel('Reported quarter')
-        elif time_str == 'acc_quarter':
-            plt.xlabel('Accident quarter')
-        else:
-            raise ValueError('Invalid time_str')
-
-        plt.show()
-
-        # boxplot of weighted vsCE by ocl with transparency for overlapping boxes
+        # boxplot of weighted vsCE by OCL
         bp_preds_model1 = box_plot(results_model1['weighted_vsCE_ocl_by_time'], positions=times, model_name=name_model1, alpha=0.5)
         if results_model2 is not None:
             bp_preds_model2 = box_plot(results_model2['weighted_vsCE_ocl_by_time'], positions=times, model_name=name_model2, alpha=0.5)
@@ -3353,6 +3353,7 @@ def results_multiple_datasets(fp_py, fp_out, seed_base, max_iter):
         ocl_error_incurreds = round_threshold(100 * (ocl_incurreds_val - aggregate_ocls_val) / aggregate_ocls_val)
 
         # weighted vsCE at the valuation date
+        vsCE_val = round_threshold(get_vsCE(actuals_val, preds_val, incurreds_val))
         weighted_vsCE_claimsize_val = round_threshold(get_weighted_vsCE_claimsize(actuals_val, preds_val, incurreds_val))
         weighted_vsCE_ocl_val = round_threshold(get_weighted_vsCE_ocl(actuals_val, preds_val, incurreds_val, ocls_val))
 
@@ -3412,6 +3413,7 @@ def results_multiple_datasets(fp_py, fp_out, seed_base, max_iter):
                         'ocl_incurreds_val': ocl_incurreds_val, 
                         'ocl_error_preds_val': ocl_error_preds, 
                         'ocl_error_incurreds_val': ocl_error_incurreds, 
+                        'vsCE_val': vsCE_val,
                         'weighted_vsCE_claimsize_val': weighted_vsCE_claimsize_val,
                         'weighted_vsCE_ocl_val': weighted_vsCE_ocl_val,
                         'MALE_preds': MALE_preds,
@@ -3450,7 +3452,17 @@ def plot_results_multiple_datasets(results, name_model1):
     aggregate_by_time(results['test_set_index_val'], actuals_matrix_val, preds_matrix_val, incurreds_matrix_val, ocls_matrix_val, 'rept_quarter', name_model1, graphs_without_incurred=True)
     aggregate_by_time(results['test_set_index_val'], actuals_matrix_val, preds_matrix_val, incurreds_matrix_val, ocls_matrix_val, 'acc_quarter', name_model1, graphs_without_incurred=True)
 
+    # Boxplot of vsCE at the valuation date
+    fig = plt.figure(figsize=(1.2, 6.4))
+    bp_preds_model1 = box_plot(results['vsCE_val'], [0], model_name=name_model1, showfliers=True)
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.title('$\mathrm{vsCE}$ (%)')
+    if name_model1 is not None:
+        plt.xticks([0], [name_model1])
+    plt.show()
+
     # Boxplot of weighted vsCE (Claim Size) at the valuation date
+    fig = plt.figure(figsize=(1.2, 6.4))
     bp_preds_model1 = box_plot(results['weighted_vsCE_claimsize_val'], [0], model_name=name_model1, showfliers=True)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.title('$\mathrm{vsCE}_{\mathrm{ClaimSize}}$ (%)')
@@ -3592,11 +3604,35 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     print(f'{name_model2} MSLE: mean = {results_model2["MSLE_preds_val"].mean():.4f}, std = {results_model2["MSLE_preds_val"].std():.4f}')
     print(f'Incurreds MSLE: mean = {results_model1["MSLE_incurreds_val"].mean():.4f}, std = {results_model1["MSLE_incurreds_val"].std():.4f}')
 
+    print(f'\n{name_model1} vsCE: mean = {results_model1["vsCE_val"].mean():.2f}%, std = {results_model1["vsCE_val"].std():.2f}%')
+    print(f'{name_model2} vsCE: mean = {results_model2["vsCE_val"].mean():.2f}%, std = {results_model2["vsCE_val"].std():.2f}%')
+
+    print(f'\n{name_model1} weighted vsCE (Claim Size): mean = {results_model1["weighted_vsCE_claimsize_val"].mean():.2f}%, std = {results_model1["weighted_vsCE_claimsize_val"].std():.2f}%')
+    print(f'{name_model2} weighted vsCE (Claim Size): mean = {results_model2["weighted_vsCE_claimsize_val"].mean():.2f}%, std = {results_model2["weighted_vsCE_claimsize_val"].std():.2f}%')
+
     print(f'\n{name_model1} weighted vsCE (OCL): mean = {results_model1["weighted_vsCE_ocl_val"].mean():.2f}%, std = {results_model1["weighted_vsCE_ocl_val"].std():.2f}%')
     print(f'{name_model2} weighted vsCE (OCL): mean = {results_model2["weighted_vsCE_ocl_val"].mean():.2f}%, std = {results_model2["weighted_vsCE_ocl_val"].std():.2f}%')
 
     plot_multiple_models_by_time(results_model1, results_model2, name_model1, name_model2)
     
+    # Boxplot of vsCE at the valuation date
+    fig = plt.figure(figsize=(2.4, 6.4))
+    bp_preds_model1 = box_plot(results_model1['vsCE_val'], [0], model_name=name_model1, showfliers=True)
+    bp_preds_model2 = box_plot(results_model2['vsCE_val'], [1], model_name=name_model2, showfliers=True)    
+    plt.xticks([0, 1], [name_model1, name_model2])
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.title('$\mathrm{vsCE}$ (%)')
+    plt.show()
+
+    # Boxplot of weighted vsCE (Claim Size) at the valuation date
+    fig = plt.figure(figsize=(2.4, 6.4))
+    bp_preds_model1 = box_plot(results_model1['weighted_vsCE_claimsize_val'], [0], model_name=name_model1, showfliers=True)
+    bp_preds_model2 = box_plot(results_model2['weighted_vsCE_claimsize_val'], [1], model_name=name_model2, showfliers=True)    
+    plt.xticks([0, 1], [name_model1, name_model2])
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.title('$\mathrm{vsCE}_{\mathrm{ClaimSize}}$ (%)')
+    plt.show()
+
     # Boxplot of weighted vsCE (OCL) at the valuation date
     fig = plt.figure(figsize=(2.4, 6.4))
     bp_preds_model1 = box_plot(results_model1['weighted_vsCE_ocl_val'], [0], model_name=name_model1, showfliers=True)
