@@ -24,7 +24,7 @@ and [SynthETIC](https://github.com/agi-lab/SynthETIC) (Avanzi, Taylor, Wang & Wo
 
 **2. Data Manipulation.R**
 
-Contains the main data manipulation, as well as train-test splitting. Prepares the raw data for input into the RNN(+) and FNN(+) models.
+Contains the main data manipulation, as well as train-test splitting. Prepares the raw data for input into the LSTM(+) and FNN(+) models.
 
 **3. Model Training.ipynb files**
 
