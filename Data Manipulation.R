@@ -15,7 +15,7 @@ print( getwd() )
 
 ################################################################################
 
-data_manipulation <- function(fp_in, fp_out, fp_out_noInc) {
+data_manipulation <- function(fp_in, fp_out, fp_out_noInc, train_test_split="by_time") {
 
   # Reading data
   data <- fread(fp_in)
@@ -156,43 +156,49 @@ data_manipulation <- function(fp_in, fp_out, fp_out_noInc) {
   
   ### TRAIN TEST SPLIT ######################################################
   
-  # 'realistic split'
-  # val_start_quarter = 36
-  # test_start_quarter = 40
-  # 
-  # # Valuation date is 40
-  # train_index <- index_data[finalised_quarter <= val_start_quarter]
-  # val_index <- index_data[finalised_quarter > val_start_quarter & finalised_quarter <= test_start_quarter]
-  # test_index <- index_data[finalised_quarter > test_start_quarter]
-  # 
-  # # reorganise some observations from training and val sets (moving 20% of val -> train for now)
-  # set.seed(1)
-  # val_to_train_prop = 0.2
-  # train_claims <- train_index[, unique(claim_no)]
-  # val_claims <- val_index[, unique(claim_no)]
-  # claims_to_move <- sample(val_claims, val_to_train_prop * length(val_claims))
-  # 
-  # val_index <- val_index[!(claim_no %in% claims_to_move)]
-  # train_index <- index_data[claim_no %in% c(train_claims, claims_to_move)]
+  if (train_test_split == "by_time") {
+    'realistic split'
+    val_start_quarter = 36
+    test_start_quarter = 40
+
+    # Valuation date is 40
+    train_index <- index_data[finalised_quarter <= val_start_quarter]
+    val_index <- index_data[finalised_quarter > val_start_quarter & finalised_quarter <= test_start_quarter]
+    test_index <- index_data[finalised_quarter > test_start_quarter]
+
+    # reorganise some observations from training and val sets (moving 20% of val -> train for now)
+    set.seed(1)
+    val_to_train_prop = 0.2
+    train_claims <- train_index[, unique(claim_no)]
+    val_claims <- val_index[, unique(claim_no)]
+    claims_to_move <- sample(val_claims, val_to_train_prop * length(val_claims))
+
+    val_index <- val_index[!(claim_no %in% claims_to_move)]
+    train_index <- index_data[claim_no %in% c(train_claims, claims_to_move)]
+    
+  }
   
-  # 'random' split
-  set.seed(1)
-  train_prop = 0.6
-  val_prop = 0.2
-  test_prop = 0.2
+  else if (train_test_split == "random") {
+    # 'random' split
+    set.seed(1)
+    train_prop = 0.6
+    val_prop = 0.2
+    test_prop = 0.2
+    
+    all_claims <- 1:max(index_data$claim_no)
+    
+    train_claims <- sample(all_claims, train_prop * length(all_claims), replace = FALSE)
+    val_claims <- all_claims[!(all_claims %in% train_claims)]
+    
+    test_claims <- sample(val_claims, test_prop / (val_prop + test_prop) * length(val_claims), replace = FALSE)
+    val_claims <- val_claims[!(val_claims %in% test_claims)]
+    
+    train_index <- index_data[claim_no %in% train_claims]
+    val_index <- index_data[claim_no %in% val_claims]
+    test_index <- index_data[claim_no %in% test_claims]
+  }
 
-  all_claims <- 1:max(index_data$claim_no)
-
-  train_claims <- sample(all_claims, train_prop * length(all_claims), replace = FALSE)
-  val_claims <- all_claims[!(all_claims %in% train_claims)]
-
-  test_claims <- sample(val_claims, test_prop / (val_prop + test_prop) * length(val_claims), replace = FALSE)
-  val_claims <- val_claims[!(val_claims %in% test_claims)]
-
-  train_index <- index_data[claim_no %in% train_claims]
-  val_index <- index_data[claim_no %in% val_claims]
-  test_index <- index_data[claim_no %in% test_claims]
-  
+  else {stop("train_test_split should either be 'by_time' or 'random'")}
   
   train_set <- databoxes[index %in% train_index[, index]]
   val_set <- databoxes[index %in% val_index[, index]]
@@ -292,4 +298,24 @@ print("Done!")
 #fp_in = './Datasets/R Outputs/data_noInf_cov_TRUE_seed_500.csv'
 
 
+# Large complexity 5 datasets with distorted case estimates
+max_iter = 50
+seed_base = 500
 
+fp_R = './Datasets/R Outputs/Distorted Case Estimates/data_noInf_cov_TRUE_seed_'
+fp_py_WithInc = './Datasets/Python Inputs/Split by time/Distorted Case Estimates/noInf_WithInc_seed_'
+fp_py_noInc = './Datasets/Python Inputs/Split by time/Distorted Case Estimates/noInf_NoInc_seed_'
+
+
+for (i in 0:max_iter) {
+  fp_in = paste0(fp_R, i + seed_base, '.csv')
+  fp_out = paste0(fp_py_WithInc, i + seed_base, '/')
+  fp_out_noInc = paste0(fp_py_noInc, i + seed_base, '/')
+  
+  print(paste0('Seed: ', i + seed_base))
+  #print(paste0('fp_in: ', fp_in))
+  #print(paste0('fp out: ', fp_out))
+  
+  data_manipulation(fp_in, fp_out, fp_out_noInc)
+}
+print("Done!")
