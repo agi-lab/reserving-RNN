@@ -740,8 +740,8 @@ class ClaimsFNN(nn.Module):
 
 def train_network(model, train_data, hp_comb, verbose=True, 
                   val_data=None, cv_loss_list=None, cv_vsCE_list=None, 
-                  cv_weighted_vsCE_claimsize_list=None, 
-                  cv_weighted_vsCE_ocl_list=None, cv_uie_list=None,
+                  cv_weighted_vsCE_S_list=None, 
+                  cv_weighted_vsCE_O_list=None, cv_uie_list=None,
                   epoch_graphs=False):
     
     """
@@ -759,20 +759,20 @@ def train_network(model, train_data, hp_comb, verbose=True,
 
     if val_data is not None:
         train_loss_list = []
-        train_weighted_vsCE_ocl_list = []
+        train_weighted_vsCE_O_list = []
         train_agg_clmsize_percent_error_model = []
 
         val_loss_list = []
         val_vsCE_list = []
-        val_weighted_vsCE_claimsize_list = []
-        val_weighted_vsCE_ocl_list = []
+        val_weighted_vsCE_S_list = []
+        val_weighted_vsCE_O_list = []
         val_uie_list = []
         val_agg_clmsize_percent_error_model = []
 
         best_val_loss = np.inf
         best_val_vsCE = 0
-        best_val_weighted_vsCE_claimsize = 0
-        best_val_weighted_vsCE_ocl = 0
+        best_val_weighted_vsCE_S = 0
+        best_val_weighted_vsCE_O = 0
         best_val_uie = np.inf
         best_weights = None
 
@@ -801,8 +801,8 @@ def train_network(model, train_data, hp_comb, verbose=True,
         total_loss = 0
         total_datapoints = 0
         total_vsCE = 0
-        total_weighted_vsCE_claimsize = 0
-        total_weighted_vsCE_ocl = 0
+        total_weighted_vsCE_S = 0
+        total_weighted_vsCE_O = 0
         total_uie = 0
         total_ultimates = 0
         total_ocls = 0
@@ -1019,10 +1019,10 @@ def train_network(model, train_data, hp_comb, verbose=True,
             total_vsCE += sum(torch.abs((ultimates-preds)) < 
                                torch.abs((ultimates-latest_incurreds)))
             
-            total_weighted_vsCE_claimsize += sum(ultimates * (torch.abs((ultimates-preds)) < 
+            total_weighted_vsCE_S += sum(ultimates * (torch.abs((ultimates-preds)) < 
                                         torch.abs((ultimates-latest_incurreds))))
             
-            total_weighted_vsCE_ocl += sum(true_ocls * (torch.abs((ultimates-preds)) < 
+            total_weighted_vsCE_O += sum(true_ocls * (torch.abs((ultimates-preds)) < 
                                         torch.abs((ultimates-latest_incurreds))))
             
             total_preds += sum(preds)
@@ -1040,8 +1040,8 @@ def train_network(model, train_data, hp_comb, verbose=True,
         vs_incurred_accuracy = (total_vsCE / total_datapoints * 100).item()
         uie = (total_uie / total_datapoints * 100).item()
         total_loss = (total_loss / total_datapoints).item()
-        weighted_vsCE_claimsize = (total_weighted_vsCE_claimsize / total_ultimates * 100).item()
-        weighted_vsCE_ocl = (total_weighted_vsCE_ocl / total_ocls * 100).item()
+        weighted_vsCE_S = (total_weighted_vsCE_S / total_ultimates * 100).item()
+        weighted_vsCE_O = (total_weighted_vsCE_O / total_ocls * 100).item()
         agg_clmsize_percent_error_model = ((total_preds - total_incurreds) / total_ultimates * 100).item()
         agg_clmsize_percent_error_incurreds = ((total_incurreds - total_ultimates) / total_ultimates * 100).item()
 
@@ -1049,8 +1049,8 @@ def train_network(model, train_data, hp_comb, verbose=True,
             print(f'Epoch {epoch}: '
                   f'training loss = {round_threshold(total_loss):,}, '
                   f'vsCE = {vs_incurred_accuracy:.2f}%, '
-                  f'weighted vsCE (Claim Size) = {weighted_vsCE_claimsize:.2f}%, '
-                  f'weighted vsCE (OCL) = {weighted_vsCE_ocl:.2f}%, '
+                  f'weighted vsCE (S) = {weighted_vsCE_S:.2f}%, '
+                  f'weighted vsCE (O) = {weighted_vsCE_O:.2f}%, '
                   f'UIE = {uie:.2f}%, '
                   f'model aggregate error = {agg_clmsize_percent_error_model:.2f}%, '
                   f'incurreds aggregate error = {agg_clmsize_percent_error_incurreds:.2f}%')
@@ -1058,8 +1058,8 @@ def train_network(model, train_data, hp_comb, verbose=True,
         if isinstance(train_loss_list, list):
             train_loss_list.append(total_loss)
 
-        if isinstance(train_weighted_vsCE_ocl_list, list):
-            train_weighted_vsCE_ocl_list.append(weighted_vsCE_ocl)
+        if isinstance(train_weighted_vsCE_O_list, list):
+            train_weighted_vsCE_O_list.append(weighted_vsCE_O)
 
         if isinstance(train_agg_clmsize_percent_error_model, list):
             train_agg_clmsize_percent_error_model.append(agg_clmsize_percent_error_model)
@@ -1072,8 +1072,8 @@ def train_network(model, train_data, hp_comb, verbose=True,
                 
             test_network(model, val_data, hp_comb, val_loss_list=val_loss_list, 
                          val_vsCE_list=val_vsCE_list, 
-                         val_weighted_vsCE_claimsize_list=val_weighted_vsCE_claimsize_list,
-                         val_weighted_vsCE_ocl_list=val_weighted_vsCE_ocl_list,
+                         val_weighted_vsCE_S_list=val_weighted_vsCE_S_list,
+                         val_weighted_vsCE_O_list=val_weighted_vsCE_O_list,
                          val_uie_list=val_uie_list,
                          val_agg_clmsize_percent_error_model=val_agg_clmsize_percent_error_model, 
                          verbose=verbose)
@@ -1084,8 +1084,8 @@ def train_network(model, train_data, hp_comb, verbose=True,
             if val_loss_list[-1] < best_val_loss - min_delta:
                 best_val_loss = val_loss_list[-1]
                 best_val_vsCE = val_vsCE_list[-1]
-                best_val_weighted_vsCE_claimsize = val_weighted_vsCE_claimsize_list[-1]
-                best_val_weighted_vsCE_ocl = val_weighted_vsCE_ocl_list[-1]
+                best_val_weighted_vsCE_S = val_weighted_vsCE_S_list[-1]
+                best_val_weighted_vsCE_O = val_weighted_vsCE_O_list[-1]
                 best_val_uie = val_uie_list[-1]
                 patience_counter = 0
                 best_weights = deepcopy(model.state_dict())
@@ -1099,10 +1099,10 @@ def train_network(model, train_data, hp_comb, verbose=True,
                     cv_loss_list.append(best_val_loss)
                 if cv_vsCE_list is not None:
                     cv_vsCE_list.append(best_val_vsCE)
-                if cv_weighted_vsCE_claimsize_list is not None:
-                    cv_weighted_vsCE_claimsize_list.append(best_val_weighted_vsCE_claimsize)
-                if cv_weighted_vsCE_ocl_list is not None:
-                    cv_weighted_vsCE_ocl_list.append(best_val_weighted_vsCE_ocl)
+                if cv_weighted_vsCE_S_list is not None:
+                    cv_weighted_vsCE_S_list.append(best_val_weighted_vsCE_S)
+                if cv_weighted_vsCE_O_list is not None:
+                    cv_weighted_vsCE_O_list.append(best_val_weighted_vsCE_O)
                 if cv_uie_list is not None:
                     cv_uie_list.append(best_val_uie)
                 
@@ -1111,8 +1111,8 @@ def train_network(model, train_data, hp_comb, verbose=True,
                     print(f'Validation: '
                           f'loss = {round_threshold(best_val_loss):,}, '
                           f'vsCE = {best_val_vsCE:.2f}%, '
-                          f'weighted vsCE (Claim Size) = {best_val_weighted_vsCE_claimsize:.2f}%, '
-                          f'weighted vsCE (OCL) = {best_val_weighted_vsCE_ocl:.2f}%, '
+                          f'weighted vsCE (S) = {best_val_weighted_vsCE_S:.2f}%, '
+                          f'weighted vsCE (O) = {best_val_weighted_vsCE_O:.2f}%, '
                           f'UIE = {best_val_uie:.2f}%\n')
                     
                     # produce epoch graphs
@@ -1130,11 +1130,11 @@ def train_network(model, train_data, hp_comb, verbose=True,
                         plt.show()
 
                         # plotting vsCE curves together because they are hopefully on similar scales
-                        plt.plot(list(range(epoch + 1)), train_weighted_vsCE_ocl_list, label='train vsCE (OCL)', color='blue')
-                        plt.plot(list(range(epoch + 1)), val_weighted_vsCE_ocl_list, label='val vsCE (OCL)', color='orange')
+                        plt.plot(list(range(epoch + 1)), train_weighted_vsCE_O_list, label='train vsCE (O)', color='blue')
+                        plt.plot(list(range(epoch + 1)), val_weighted_vsCE_O_list, label='val vsCE (O)', color='orange')
                         plt.xlabel('epoch')
-                        plt.ylabel('vsCE (OCL)')
-                        plt.title('vsCE (OCL) curve over epochs')
+                        plt.ylabel('vsCE (O)')
+                        plt.title('vsCE (O) curve over epochs')
                         plt.legend()
                         plt.show()
 
@@ -1154,23 +1154,23 @@ def train_network(model, train_data, hp_comb, verbose=True,
             (val_data is not None) and 
             (cv_loss_list is not None) and 
             (cv_vsCE_list is not None) and
-            (cv_weighted_vsCE_claimsize_list is not None) and
-            (cv_weighted_vsCE_ocl_list is not None) and
+            (cv_weighted_vsCE_S_list is not None) and
+            (cv_weighted_vsCE_O_list is not None) and
             (cv_uie_list is not None)):
 
             model.load_state_dict(best_weights)
             cv_loss_list.append(best_val_loss)
             cv_vsCE_list.append(best_val_vsCE)
-            cv_weighted_vsCE_claimsize_list.append(best_val_weighted_vsCE_claimsize)
-            cv_weighted_vsCE_ocl_list.append(best_val_weighted_vsCE_ocl)
+            cv_weighted_vsCE_S_list.append(best_val_weighted_vsCE_S)
+            cv_weighted_vsCE_O_list.append(best_val_weighted_vsCE_O)
             cv_uie_list.append(best_val_uie)
 
             if verbose:
                 print(f'\nNo early stopping')
                 print(f'Validation: loss = {round_threshold(best_val_loss):,}, '
                     f'vsCE = {best_val_vsCE:.2f}%, '
-                    f'weighted vsCE (Claim Size) = {best_val_weighted_vsCE_claimsize:.2f}%, '
-                    f'weighted vsCE (OCL) = {best_val_weighted_vsCE_ocl:.2f}%, '
+                    f'weighted vsCE (S) = {best_val_weighted_vsCE_S:.2f}%, '
+                    f'weighted vsCE (O) = {best_val_weighted_vsCE_O:.2f}%, '
                     f'UIE = {best_val_uie:.2f}%\n')
                 
                 # produce epoch graphs
@@ -1188,11 +1188,11 @@ def train_network(model, train_data, hp_comb, verbose=True,
                     plt.show()
 
                     # plotting vsCE curves together because they are hopefully on similar scales
-                    plt.plot(list(range(epoch + 1)), train_weighted_vsCE_ocl_list, label='train vsCE (OCL)', color='blue')
-                    plt.plot(list(range(epoch + 1)), val_weighted_vsCE_ocl_list, label='val vsCE (OCL)', color='orange')
+                    plt.plot(list(range(epoch + 1)), train_weighted_vsCE_O_list, label='train vsCE (O)', color='blue')
+                    plt.plot(list(range(epoch + 1)), val_weighted_vsCE_O_list, label='val vsCE (O)', color='orange')
                     plt.xlabel('epoch')
-                    plt.ylabel('vsCE (OCL)')
-                    plt.title('vsCE (OCL) curve over epochs')
+                    plt.ylabel('vsCE (O)')
+                    plt.title('vsCE (O) curve over epochs')
                     plt.legend()
                     plt.show()
 
@@ -1207,8 +1207,8 @@ def train_network(model, train_data, hp_comb, verbose=True,
             
 def test_network(model, test_data, hp_comb, preds_list=None, verbose=True, 
                  val_loss_list=None, val_vsCE_list=None, 
-                 val_weighted_vsCE_claimsize_list=None, 
-                 val_weighted_vsCE_ocl_list=None, val_uie_list=None,
+                 val_weighted_vsCE_S_list=None, 
+                 val_weighted_vsCE_O_list=None, val_uie_list=None,
                  val_agg_clmsize_percent_error_model=None):
     
     """Args:
@@ -1226,8 +1226,8 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
     total_loss = 0
     total_datapoints = 0
     total_vsCE = 0
-    total_weighted_vsCE_claimsize = 0
-    total_weighted_vsCE_ocl = 0
+    total_weighted_vsCE_S = 0
+    total_weighted_vsCE_O = 0
     total_uie = 0
     total_ultimates = 0
     total_ocls = 0
@@ -1438,10 +1438,10 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
             total_vsCE += sum(torch.abs((ultimates-preds)) < 
                                torch.abs((ultimates-latest_incurreds)))
             
-            total_weighted_vsCE_claimsize += sum(ultimates * (torch.abs((ultimates-preds)) < 
+            total_weighted_vsCE_S += sum(ultimates * (torch.abs((ultimates-preds)) < 
                                         torch.abs((ultimates-latest_incurreds))))
             
-            total_weighted_vsCE_ocl += sum(true_ocls * (torch.abs((ultimates-preds)) <
+            total_weighted_vsCE_O += sum(true_ocls * (torch.abs((ultimates-preds)) <
                                         torch.abs((ultimates-latest_incurreds))))
             
             total_ultimates += sum(ultimates)
@@ -1462,16 +1462,16 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
         vs_incurred_accuracy = (total_vsCE / total_datapoints * 100).item()
         uie = (total_uie / total_datapoints * 100).item()
         total_loss = (total_loss / total_datapoints).item()
-        weighted_vsCE_claimsize = (total_weighted_vsCE_claimsize / total_ultimates * 100).item()
-        weighted_vsCE_ocl = (total_weighted_vsCE_ocl / total_ocls * 100).item()
+        weighted_vsCE_S = (total_weighted_vsCE_S / total_ultimates * 100).item()
+        weighted_vsCE_O = (total_weighted_vsCE_O / total_ocls * 100).item()
         agg_clmsize_percent_error_model = ((total_preds - total_incurreds) / total_ultimates * 100).item()
         agg_clmsize_percent_error_incurreds = ((total_incurreds - total_ultimates) / total_ultimates * 100).item()
 
         if verbose:
             print(f'loss = {round_threshold(total_loss):,}, '
                   f'vsCE = {vs_incurred_accuracy:.2f}%, '
-                  f'weighted vsCE (Claim Size) = {weighted_vsCE_claimsize:.2f}%, '
-                  f'weighted vsCE (OCL) = {weighted_vsCE_ocl:.2f}%, '
+                  f'weighted vsCE (S) = {weighted_vsCE_S:.2f}%, '
+                  f'weighted vsCE (O) = {weighted_vsCE_O:.2f}%, '
                   f'UIE = {uie:.2f}%, '
                   f'model aggregate error = {agg_clmsize_percent_error_model:.2f}%, '
                   f'incurreds aggregate error = {agg_clmsize_percent_error_incurreds:.2f}%')
@@ -1482,11 +1482,11 @@ def test_network(model, test_data, hp_comb, preds_list=None, verbose=True,
         if isinstance(val_vsCE_list, list):
             val_vsCE_list.append(vs_incurred_accuracy)
 
-        if isinstance(val_weighted_vsCE_claimsize_list, list):
-            val_weighted_vsCE_claimsize_list.append(weighted_vsCE_claimsize)
+        if isinstance(val_weighted_vsCE_S_list, list):
+            val_weighted_vsCE_S_list.append(weighted_vsCE_S)
 
-        if isinstance(val_weighted_vsCE_ocl_list, list):
-            val_weighted_vsCE_ocl_list.append(weighted_vsCE_ocl)
+        if isinstance(val_weighted_vsCE_O_list, list):
+            val_weighted_vsCE_O_list.append(weighted_vsCE_O)
 
         if isinstance(val_uie_list, list):
             val_uie_list.append(uie)
@@ -1536,14 +1536,14 @@ def get_losses(actuals, preds, incurreds, dataset, hp_comb):
 def get_vsCE(actuals, preds, incurreds):
     return 100 * np.mean(np.abs((actuals-preds)) < np.abs((actuals-incurreds)))
 
-def get_weighted_vsCE_claimsize(actuals, preds, incurreds):
+def get_weighted_vsCE_S(actuals, preds, incurreds):
     if sum(actuals) > 0:
         return 100 * np.average(np.abs((actuals-preds)) < 
                                 np.abs((actuals-incurreds)), weights=actuals)
     else:
         return None
 
-def get_weighted_vsCE_ocl(actuals, preds, incurreds, ocls):
+def get_weighted_vsCE_O(actuals, preds, incurreds, ocls):
     if sum(ocls) > 0:
         return 100 * np.average(np.abs((actuals-preds)) < 
                                 np.abs((actuals-incurreds)), weights=ocls)
@@ -1569,8 +1569,8 @@ def get_preds_actuals(model, test_data, param_dict, verbose=False):
 
     test_network(model, test_data, param_dict, preds_list=preds_list, verbose=verbose, 
                  val_loss_list=None, val_vsCE_list=None, 
-                 val_weighted_vsCE_claimsize_list=None, 
-                 val_weighted_vsCE_ocl_list=None, val_uie_list=None,
+                 val_weighted_vsCE_S_list=None, 
+                 val_weighted_vsCE_O_list=None, val_uie_list=None,
                  val_agg_clmsize_percent_error_model=None)
 
     preds_list = pd.Series(preds_list)
@@ -1629,8 +1629,8 @@ def extract_performance_by_time(index_data, actuals, preds, incurreds, ocls, tim
 
         preds_by_time = np.zeros(len(times))
         vsCE_by_time = np.zeros(len(times))
-        weighted_vsCE_claimsize_by_time = np.zeros(len(times))
-        weighted_vsCE_ocl_by_time = np.zeros(len(times))
+        weighted_vsCE_S_by_time = np.zeros(len(times))
+        weighted_vsCE_O_by_time = np.zeros(len(times))
 
         # these will not be used for 1 dataset, 1 prediction but need to define them for the results dictionary
         ocl_preds_by_time = None
@@ -1689,8 +1689,8 @@ def extract_performance_by_time(index_data, actuals, preds, incurreds, ocls, tim
 
         preds_by_time = np.zeros((len(preds), len(times)))
         vsCE_by_time = np.zeros((len(preds), len(times)))
-        weighted_vsCE_claimsize_by_time = np.zeros((len(preds), len(times)))
-        weighted_vsCE_ocl_by_time = np.zeros((len(preds), len(times)))
+        weighted_vsCE_S_by_time = np.zeros((len(preds), len(times)))
+        weighted_vsCE_O_by_time = np.zeros((len(preds), len(times)))
 
     for index, time in enumerate(times):
 
@@ -1708,11 +1708,11 @@ def extract_performance_by_time(index_data, actuals, preds, incurreds, ocls, tim
                                             preds[indicator], 
                                             incurreds[indicator])
             
-            weighted_vsCE_claimsize_by_time[index] = get_weighted_vsCE_claimsize(actuals[indicator], 
+            weighted_vsCE_S_by_time[index] = get_weighted_vsCE_S(actuals[indicator], 
                                                             preds[indicator], 
                                                             incurreds[indicator])
             
-            weighted_vsCE_ocl_by_time[index] = get_weighted_vsCE_ocl(actuals[indicator], 
+            weighted_vsCE_O_by_time[index] = get_weighted_vsCE_O(actuals[indicator], 
                                                             preds[indicator], 
                                                             incurreds[indicator], 
                                                             ocls[indicator])
@@ -1736,11 +1736,11 @@ def extract_performance_by_time(index_data, actuals, preds, incurreds, ocls, tim
                                                         preds[i][indicator], 
                                                         incurreds[indicator])
 
-                    weighted_vsCE_claimsize_by_time[i, index] = get_weighted_vsCE_claimsize(actuals[indicator], 
+                    weighted_vsCE_S_by_time[i, index] = get_weighted_vsCE_S(actuals[indicator], 
                                                                         preds[i][indicator], 
                                                                         incurreds[indicator])
 
-                    weighted_vsCE_ocl_by_time[i, index] = get_weighted_vsCE_ocl(actuals[indicator], 
+                    weighted_vsCE_O_by_time[i, index] = get_weighted_vsCE_O(actuals[indicator], 
                                                                         preds[i][indicator], 
                                                                         incurreds[indicator], 
                                                                         ocls[indicator])
@@ -1764,11 +1764,11 @@ def extract_performance_by_time(index_data, actuals, preds, incurreds, ocls, tim
                                                     preds[i][indicator], 
                                                     incurreds[i][indicator]) 
                 
-                    weighted_vsCE_claimsize_by_time[i, index] = get_weighted_vsCE_claimsize(actuals[i][indicator], 
+                    weighted_vsCE_S_by_time[i, index] = get_weighted_vsCE_S(actuals[i][indicator], 
                                                                     preds[i][indicator], 
                                                                     incurreds[i][indicator])
 
-                    weighted_vsCE_ocl_by_time[i, index] = get_weighted_vsCE_ocl(actuals[i][indicator], 
+                    weighted_vsCE_O_by_time[i, index] = get_weighted_vsCE_O(actuals[i][indicator], 
                                                                     preds[i][indicator], 
                                                                     incurreds[i][indicator], 
                                                                     ocls[i][indicator])
@@ -1793,8 +1793,8 @@ def extract_performance_by_time(index_data, actuals, preds, incurreds, ocls, tim
         'paids_by_time': paids_by_time,
         'preds_by_time': preds_by_time,
         'vsCE_by_time': vsCE_by_time,
-        'weighted_vsCE_claimsize_by_time': weighted_vsCE_claimsize_by_time,
-        'weighted_vsCE_ocl_by_time': weighted_vsCE_ocl_by_time,
+        'weighted_vsCE_S_by_time': weighted_vsCE_S_by_time,
+        'weighted_vsCE_O_by_time': weighted_vsCE_O_by_time,
         'ocl_preds_by_time': ocl_preds_by_time,
         'ocl_incurreds_by_time': ocl_incurreds_by_time,
         'preds_over_actuals_by_time': preds_over_actuals_by_time,
@@ -1883,7 +1883,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
         if include_incurreds:
             plt.plot(times, incurreds_by_time - paids_by_time, label='Case Estimates', color=get_median_colour('Case Estimates'))
         plt.legend(loc='upper right')
-        plt.title('OCL')
+        plt.title('RBNS Reserve')
 
         if time_str == 'pred_time':
             plt.xlabel('Calendar quarter')
@@ -1924,14 +1924,14 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
 
         # plotting weighted vsCE by claim size
         if name_model1 is None:
-            plt.plot(times, results_model1['weighted_vsCE_claimsize_by_time'])
+            plt.plot(times, results_model1['weighted_vsCE_S_by_time'])
         else:
-            plt.plot(times, results_model1['weighted_vsCE_claimsize_by_time'], label=name_model1, color=get_median_colour(name_model1))
+            plt.plot(times, results_model1['weighted_vsCE_S_by_time'], label=name_model1, color=get_median_colour(name_model1))
         if results_model2 is not None:
-            plt.plot(times, results_model2['weighted_vsCE_claimsize_by_time'], label=name_model2, color=get_median_colour(name_model1))
+            plt.plot(times, results_model2['weighted_vsCE_S_by_time'], label=name_model2, color=get_median_colour(name_model1))
             plt.legend(loc='upper right')
 
-        plt.title('$\mathrm{vsCE}_{\mathrm{ClaimSize}}$ (%)')
+        plt.title('$\mathrm{vsCE}_{\mathrm{S}}$ (%)')
 
         if time_str == 'pred_time':
             plt.xlabel('Calendar quarter')
@@ -1948,14 +1948,14 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
 
         # plotting weighted vsCE by ocl
         if name_model1 is None:
-            plt.plot(times, results_model1['weighted_vsCE_ocl_by_time'])
+            plt.plot(times, results_model1['weighted_vsCE_O_by_time'])
         else:
-            plt.plot(times, results_model1['weighted_vsCE_ocl_by_time'], label=name_model1, color=get_median_colour(name_model1))
+            plt.plot(times, results_model1['weighted_vsCE_O_by_time'], label=name_model1, color=get_median_colour(name_model1))
         if results_model2 is not None:
-            plt.plot(times, results_model2['weighted_vsCE_ocl_by_time'], label=name_model2, color=get_median_colour(name_model1))
+            plt.plot(times, results_model2['weighted_vsCE_O_by_time'], label=name_model2, color=get_median_colour(name_model1))
             plt.legend(loc='upper right')
 
-        plt.title('$\mathrm{vsCE}_{\mathrm{OCL}}$ (%)')
+        plt.title('$\mathrm{vsCE}_{\mathrm{O}}$ (%)')
 
         if time_str == 'pred_time':
             plt.xlabel('Calendar quarter')
@@ -2038,7 +2038,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             else:
                 raise ValueError('Invalid time_str')
             
-            plt.title('Aggregate OCLs')
+            plt.title('RBNS Reserve (as proportion of actual)')
             plt.ylabel('Ratio')
             plt.show()
 
@@ -2121,7 +2121,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             else:
                 raise ValueError('Invalid time_str')
             
-            plt.title('OCL (as proportion of actual)')
+            plt.title('RBNS Reserve (as proportion of actual)')
             plt.ylabel('Ratio')
             plt.show()
 
@@ -2148,7 +2148,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
                 else:
                     raise ValueError('Invalid time_str')
                 
-                plt.title('OCL (as proportion of actual)')
+                plt.title('RBNS Reserve (as proportion of actual)')
                 plt.ylabel('Ratio')
 
                 plt.ylim(0, 2.5)
@@ -2181,7 +2181,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
                 plt.xticks(ticks, ticks)
                 
                 plt.xlabel('Quarters since notification')
-                plt.title('OCL (as proportion of actual)')
+                plt.title('RBNS Reserve (as proportion of actual)')
                 plt.ylabel('Ratio')
 
                 plt.ylim(0, 1.5)
@@ -2224,7 +2224,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             else:
                 raise ValueError('Invalid time_str')
             
-            plt.title('OCL (as proportion of actual) (manually adjusted negatives to 0)')
+            plt.title('RBNS Reserve (as proportion of actual) (manually adjusted negatives to 0)')
             plt.ylabel('Ratio')
             plt.show()
 
@@ -2258,15 +2258,15 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
         plt.show()
 
         # boxplot of weighted vsCE by claim size
-        bp_preds_model1 = box_plot(results_model1['weighted_vsCE_claimsize_by_time'], positions=times, model_name=name_model1, alpha=0.5)
+        bp_preds_model1 = box_plot(results_model1['weighted_vsCE_S_by_time'], positions=times, model_name=name_model1, alpha=0.5)
         if results_model2 is not None:
-            bp_preds_model2 = box_plot(results_model2['weighted_vsCE_claimsize_by_time'], positions=times, model_name=name_model2, alpha=0.5)
+            bp_preds_model2 = box_plot(results_model2['weighted_vsCE_S_by_time'], positions=times, model_name=name_model2, alpha=0.5)
         plt.plot(times, pred_cumulative_prop_by_time * 100, color='black', alpha = 0.7)
 
         if name_model1 is not None and name_model2 is not None:
             plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
 
-        plt.title('$\mathrm{vsCE}_{\mathrm{ClaimSize}}$ (%)')
+        plt.title('$\mathrm{vsCE}_{\mathrm{S}}$ (%)')
         plt.grid(axis='both', linestyle='--', alpha=0.7)
 
         ticks = [int(time) for time in times if (time % 5 == 0 and len(times) < 50) 
@@ -2287,15 +2287,15 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
         plt.show()
 
         # boxplot of weighted vsCE by OCL
-        bp_preds_model1 = box_plot(results_model1['weighted_vsCE_ocl_by_time'], positions=times, model_name=name_model1, alpha=0.5)
+        bp_preds_model1 = box_plot(results_model1['weighted_vsCE_O_by_time'], positions=times, model_name=name_model1, alpha=0.5)
         if results_model2 is not None:
-            bp_preds_model2 = box_plot(results_model2['weighted_vsCE_ocl_by_time'], positions=times, model_name=name_model2, alpha=0.5)
+            bp_preds_model2 = box_plot(results_model2['weighted_vsCE_O_by_time'], positions=times, model_name=name_model2, alpha=0.5)
         plt.plot(times, pred_cumulative_prop_by_time * 100, color='black', alpha = 0.7)
 
         if name_model1 is not None and name_model2 is not None:
             plt.legend([bp_preds_model1["boxes"][0], bp_preds_model2["boxes"][0]], [name_model1, name_model2])
 
-        plt.title('$\mathrm{vsCE}_{\mathrm{OCL}}$ (%)')
+        plt.title('$\mathrm{vsCE}_{\mathrm{O}}$ (%)')
         plt.grid(axis='both', linestyle='--', alpha=0.7)
 
         ticks = [int(time) for time in times if (time % 5 == 0 and len(times) < 50) 
@@ -2317,9 +2317,9 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
 
         # Boxplot of weighted vsCE by ocl (capped at dev quarter 16)
         if time_str == 'dev_quarter':
-            bp_preds_model1 = box_plot([sublist[:16] for sublist in results_model1['weighted_vsCE_ocl_by_time']], positions=times[:16], model_name=name_model1, alpha=0.5)
+            bp_preds_model1 = box_plot([sublist[:16] for sublist in results_model1['weighted_vsCE_O_by_time']], positions=times[:16], model_name=name_model1, alpha=0.5)
             if results_model2 is not None:
-                bp_preds_model2 = box_plot([sublist[:16] for sublist in results_model2['weighted_vsCE_ocl_by_time']], positions=times[:16], model_name=name_model2, alpha=0.5)
+                bp_preds_model2 = box_plot([sublist[:16] for sublist in results_model2['weighted_vsCE_O_by_time']], positions=times[:16], model_name=name_model2, alpha=0.5)
             plt.plot(times[:16], pred_cumulative_prop_by_time[:16] * 100, color='black', alpha = 0.7)
 
             if name_model1 is not None and name_model2 is not None:
@@ -2330,7 +2330,7 @@ def graph_by_time(results_model1, name_model1=None, results_model2=None, name_mo
             plt.xticks(ticks, ticks)
             
             plt.xlabel('Quarters since notification')
-            plt.title('$\mathrm{vsCE}_{\mathrm{OCL}}$ (%)')
+            plt.title('$\mathrm{vsCE}_{\mathrm{O}}$ (%)')
             plt.show()
 
 def aggregate_by_time(index_data, actuals, preds, incurreds, ocls, time_str, model_name=None, graphs_without_incurred=False):
@@ -2365,9 +2365,9 @@ def get_aggregates(actuals, preds, incurreds, ocls):
     print(f'Aggregate actual Claim Size: {aggregate_actual:,.0f}')
     print(f'Aggregate incurred Claim Size: {aggregate_incurred:,.0f}')
     print(f'Aggregate payments: {aggregate_payments:,.0f}')
-    print(f'Aggregate predicted OCL: {aggregate_pred_ocl:,.0f}')
-    print(f'Aggregate actual OCL: {aggregate_ocl:,.0f}')
-    print(f'Aggregate incurred OCL: {aggregate_incurred_ocl:,.0f}')
+    print(f'Predicted RBNS Reserve: {aggregate_pred_ocl:,.0f}')
+    print(f'Actual RBNS Reserve: {aggregate_ocl:,.0f}')
+    print(f'Incurred RBNS Reserve: {aggregate_incurred_ocl:,.0f}')
 
 def get_small_large(actuals, preds, incurreds, ocls, test_data, small_threshold, 
                     large_threshold):
@@ -2497,8 +2497,8 @@ def analyse_model(model, dataset, hp_comb,
     get_aggregates(actuals, preds, incurreds, ocls)
     get_losses(actuals, preds, incurreds, dataset, hp_comb)
     print(f'vsCE: {get_vsCE(actuals, preds, incurreds):.2f}%')
-    print(f'Weighted vsCE (Claim Size): {get_weighted_vsCE_claimsize(actuals, preds, incurreds):.2f}%')
-    print(f'Weighted vsCE (OCL): {get_weighted_vsCE_ocl(actuals, preds, incurreds, ocls):.2f}%')
+    print(f'Weighted vsCE (S): {get_weighted_vsCE_S(actuals, preds, incurreds):.2f}%')
+    print(f'Weighted vsCE (O): {get_weighted_vsCE_O(actuals, preds, incurreds, ocls):.2f}%')
     print(f'number of preds: {len(preds)}')
 
     get_heatmap(actuals, preds, nbins=50)
@@ -2515,17 +2515,17 @@ def analyse_model(model, dataset, hp_comb,
     get_losses(latest_actuals, latest_preds, latest_incurreds, latest_data, hp_comb)
     print(f'vsCE: {get_vsCE(latest_actuals, latest_preds, latest_incurreds):.2f}%')
 
-    weighted_vsCE_claimsize = get_weighted_vsCE_claimsize(latest_actuals, 
+    weighted_vsCE_S = get_weighted_vsCE_S(latest_actuals, 
                                         latest_preds, 
                                         latest_incurreds)
     
-    weighted_vsCE_ocl = get_weighted_vsCE_ocl(latest_actuals,
+    weighted_vsCE_O = get_weighted_vsCE_O(latest_actuals,
                                                 latest_preds,
                                                 latest_incurreds,
                                                 latest_ocls)
     
-    print(f'Weighted vsCE (Claim Size): {weighted_vsCE_claimsize:.2f}%')
-    print(f'Weighted vsCE (OCL): {weighted_vsCE_ocl:.2f}%')
+    print(f'Weighted vsCE (S): {weighted_vsCE_S:.2f}%')
+    print(f'Weighted vsCE (O): {weighted_vsCE_O:.2f}%')
     print(f'number of preds: {len(latest_preds)}')
 
     get_heatmap(latest_actuals, latest_preds, nbins=40)
@@ -2550,17 +2550,17 @@ def analyse_model(model, dataset, hp_comb,
         get_losses(dev_actuals, dev_preds, dev_incurreds, dev_data, hp_comb)
         print(f'vsCE: {get_vsCE(dev_actuals, dev_preds, dev_incurreds):.2f}%')
 
-        weighted_vsCE_claimsize = get_weighted_vsCE_claimsize(dev_actuals, 
+        weighted_vsCE_S = get_weighted_vsCE_S(dev_actuals, 
                                             dev_preds, 
                                             dev_incurreds)
         
-        weighted_vsCE_ocl = get_weighted_vsCE_ocl(dev_actuals,
+        weighted_vsCE_O = get_weighted_vsCE_O(dev_actuals,
                                                     dev_preds,
                                                     dev_incurreds,
                                                     dev_ocls)
         
-        print(f'Weighted vsCE (Claim Size): {weighted_vsCE_claimsize:.2f}%')
-        print(f'Weighted vsCE (OCL): {weighted_vsCE_ocl:.2f}%')
+        print(f'Weighted vsCE (S): {weighted_vsCE_S:.2f}%')
+        print(f'Weighted vsCE (O): {weighted_vsCE_O:.2f}%')
         print(f'number of preds: {len(dev_preds)}')
         get_heatmap(dev_actuals, dev_preds, nbins=nbinss[i])
 
@@ -2578,17 +2578,17 @@ def analyse_model(model, dataset, hp_comb,
     get_losses(small_actuals, small_preds, small_incurreds, small_data, hp_comb)
     print(f'vsCE: {get_vsCE(small_actuals, small_preds, small_incurreds):.2f}%')
 
-    weighted_vsCE_claimsize = get_weighted_vsCE_claimsize(small_actuals, 
+    weighted_vsCE_S = get_weighted_vsCE_S(small_actuals, 
                                         small_preds, 
                                         small_incurreds)
     
-    weighted_vsCE_ocl = get_weighted_vsCE_ocl(small_actuals,
+    weighted_vsCE_O = get_weighted_vsCE_O(small_actuals,
                                                 small_preds,
                                                 small_incurreds,
                                                 small_ocls)
 
-    print(f'Weighted vsCE (Claim Size): {weighted_vsCE_claimsize:.2f}%')
-    print(f'Weighted vsCE (OCL): {weighted_vsCE_ocl:.2f}%')
+    print(f'Weighted vsCE (S): {weighted_vsCE_S:.2f}%')
+    print(f'Weighted vsCE (O): {weighted_vsCE_O:.2f}%')
     print(f'number of preds: {len(small_preds)}')
     get_heatmap(small_actuals, small_preds, nbins=30)
     get_close_far(small_actuals, small_preds, small_incurreds)
@@ -2630,17 +2630,17 @@ def analyse_model(model, dataset, hp_comb,
     get_losses(medium_actuals, medium_preds, medium_incurreds, medium_data, hp_comb)
     print(f'vsCE: {get_vsCE(medium_actuals, medium_preds, medium_incurreds):.2f}%')
 
-    weighted_vsCE_claimsize = get_weighted_vsCE_claimsize(medium_actuals, 
+    weighted_vsCE_S = get_weighted_vsCE_S(medium_actuals, 
                                         medium_preds, 
                                         medium_incurreds)
     
-    weighted_vsCE_ocl = get_weighted_vsCE_ocl(medium_actuals,
+    weighted_vsCE_O = get_weighted_vsCE_O(medium_actuals,
                                                 medium_preds,
                                                 medium_incurreds,
                                                 medium_ocls)
 
-    print(f'Weighted vsCE (Claim Size): {weighted_vsCE_claimsize:.2f}%')
-    print(f'Weighted vsCE (OCL): {weighted_vsCE_ocl:.2f}%')
+    print(f'Weighted vsCE (S): {weighted_vsCE_S:.2f}%')
+    print(f'Weighted vsCE (O): {weighted_vsCE_O:.2f}%')
     print(f'number of preds: {len(medium_preds)}')
     get_heatmap(medium_actuals, medium_preds, nbins=40)
     get_close_far(medium_actuals, medium_preds, medium_incurreds)
@@ -2670,17 +2670,17 @@ def analyse_model(model, dataset, hp_comb,
     get_losses(large_actuals, large_preds, large_incurreds, large_data, hp_comb)
     print(f'vsCE: {get_vsCE(large_actuals, large_preds, large_incurreds):.2f}%')
 
-    weighted_vsCE_claimsize = get_weighted_vsCE_claimsize(large_actuals, 
+    weighted_vsCE_S = get_weighted_vsCE_S(large_actuals, 
                                         large_preds, 
                                         large_incurreds)
     
-    weighted_vsCE_ocl = get_weighted_vsCE_ocl(large_actuals,
+    weighted_vsCE_O = get_weighted_vsCE_O(large_actuals,
                                                 large_preds,
                                                 large_incurreds,
                                                 large_ocls)
 
-    print(f'Weighted vsCE (Claim Size): {weighted_vsCE_claimsize:.2f}%')
-    print(f'Weighted vsCE (OCL): {weighted_vsCE_ocl:.2f}%')
+    print(f'Weighted vsCE (S): {weighted_vsCE_S:.2f}%')
+    print(f'Weighted vsCE (O): {weighted_vsCE_O:.2f}%')
     print(f'number of preds: {len(large_preds)}')
     get_heatmap(large_actuals, large_preds,nbins=30)
     get_close_far(large_actuals, large_preds, large_incurreds)
@@ -2710,17 +2710,17 @@ def analyse_model(model, dataset, hp_comb,
     get_losses(small_actuals, small_preds, small_incurreds, small_data, hp_comb)
     print(f'vsCE: {get_vsCE(small_actuals, small_preds, small_incurreds):.2f}%')
 
-    weighted_vsCE_claimsize = get_weighted_vsCE_claimsize(small_actuals, 
+    weighted_vsCE_S = get_weighted_vsCE_S(small_actuals, 
                                         small_preds, 
                                         small_incurreds)
     
-    weighted_vsCE_ocl = get_weighted_vsCE_ocl(small_actuals,
+    weighted_vsCE_O = get_weighted_vsCE_O(small_actuals,
                                                 small_preds,
                                                 small_incurreds,
                                                 small_ocls)
 
-    print(f'Weighted vsCE (Claim Size): {weighted_vsCE_claimsize:.2f}%')
-    print(f'Weighted vsCE (OCL): {weighted_vsCE_ocl:.2f}%')
+    print(f'Weighted vsCE (S): {weighted_vsCE_S:.2f}%')
+    print(f'Weighted vsCE (O): {weighted_vsCE_O:.2f}%')
     print(f'number of preds: {len(small_preds)}')
     get_heatmap(small_actuals, small_preds, nbins=10)
     get_close_far(small_actuals, small_preds, small_incurreds)
@@ -2730,17 +2730,17 @@ def analyse_model(model, dataset, hp_comb,
     get_losses(medium_actuals, medium_preds, medium_incurreds, medium_data, hp_comb)
     print(f'vsCE: {get_vsCE(medium_actuals, medium_preds, medium_incurreds):.2f}%')
 
-    weighted_vsCE_claimsize = get_weighted_vsCE_claimsize(medium_actuals, 
+    weighted_vsCE_S = get_weighted_vsCE_S(medium_actuals, 
                                         medium_preds, 
                                         medium_incurreds)
     
-    weighted_vsCE_ocl = get_weighted_vsCE_ocl(medium_actuals,
+    weighted_vsCE_O = get_weighted_vsCE_O(medium_actuals,
                                                 medium_preds,
                                                 medium_incurreds,
                                                 medium_ocls)
 
-    print(f'Weighted vsCE (Claim Size): {weighted_vsCE_claimsize:.2f}%')
-    print(f'Weighted vsCE (OCL): {weighted_vsCE_ocl:.2f}%')
+    print(f'Weighted vsCE (S): {weighted_vsCE_S:.2f}%')
+    print(f'Weighted vsCE (O): {weighted_vsCE_O:.2f}%')
     print(f'number of preds: {len(medium_preds)}')
     get_heatmap(medium_actuals, medium_preds, nbins=30)
     get_close_far(medium_actuals, medium_preds, medium_incurreds)
@@ -2750,17 +2750,17 @@ def analyse_model(model, dataset, hp_comb,
     get_losses(large_actuals, large_preds, large_incurreds, large_data, hp_comb)
     print(f'vsCE: {get_vsCE(large_actuals, large_preds, large_incurreds):.2f}%')
 
-    weighted_vsCE_claimsize = get_weighted_vsCE_claimsize(large_actuals, 
+    weighted_vsCE_S = get_weighted_vsCE_S(large_actuals, 
                                         large_preds, 
                                         large_incurreds)
     
-    weighted_vsCE_ocl = get_weighted_vsCE_ocl(large_actuals,
+    weighted_vsCE_O = get_weighted_vsCE_O(large_actuals,
                                                 large_preds,
                                                 large_incurreds,
                                                 large_ocls)
 
-    print(f'Weighted vsCE (Claim Size): {weighted_vsCE_claimsize:.2f}%')
-    print(f'Weighted vsCE (OCL): {weighted_vsCE_ocl:.2f}%')
+    print(f'Weighted vsCE (S): {weighted_vsCE_S:.2f}%')
+    print(f'Weighted vsCE (O): {weighted_vsCE_O:.2f}%')
     print(f'number of preds: {len(large_preds)}')
     get_heatmap(large_actuals, large_preds, nbins=10)
     get_close_far(large_actuals, large_preds, large_incurreds)
@@ -2789,8 +2789,8 @@ def cross_validate(fp_in, fp_out, fp_hp_comb, hyperparameter_grid, verbose=True,
 
     best_val_loss = np.Inf
     best_val_vsCE = 0
-    best_val_weighted_vsCE_claimsize = 0
-    best_val_weighted_vsCE_ocl = 0
+    best_val_weighted_vsCE_S = 0
+    best_val_weighted_vsCE_O = 0
     best_val_uie = np.Inf
     best_hp_comb = None
     
@@ -2800,8 +2800,8 @@ def cross_validate(fp_in, fp_out, fp_hp_comb, hyperparameter_grid, verbose=True,
 
         cv_loss_list = []
         cv_vsCE_list = []
-        cv_weighted_vsCE_claimsize_list = []
-        cv_weighted_vsCE_ocl_list = []
+        cv_weighted_vsCE_S_list = []
+        cv_weighted_vsCE_O_list = []
         cv_uie_list = []
 
         # Use the same seed for each hyperparameter combination so they 
@@ -2853,29 +2853,29 @@ def cross_validate(fp_in, fp_out, fp_hp_comb, hyperparameter_grid, verbose=True,
 
         train_network(model, train_set, hp_comb, verbose, val_set, 
                       cv_loss_list, cv_vsCE_list, 
-                      cv_weighted_vsCE_claimsize_list, 
-                      cv_weighted_vsCE_ocl_list, cv_uie_list)
+                      cv_weighted_vsCE_S_list, 
+                      cv_weighted_vsCE_O_list, cv_uie_list)
         
         cv_loss = np.mean(cv_loss_list)
         cv_vsCE = np.mean(cv_vsCE_list)
-        cv_weighted_vsCE_claimsize = np.mean(cv_weighted_vsCE_claimsize_list)
-        cv_weighted_vsCE_ocl = np.mean(cv_weighted_vsCE_ocl_list)
+        cv_weighted_vsCE_S = np.mean(cv_weighted_vsCE_S_list)
+        cv_weighted_vsCE_O = np.mean(cv_weighted_vsCE_O_list)
         cv_uie = np.mean(cv_uie_list)
 
-        # 'best' model chosen based on validation vsCE (OCL)
+        # 'best' model chosen based on validation vsCE (O)
         # used to be based on val loss, but vsCE is a better reflection of what we want our model to focus on
-        if cv_weighted_vsCE_ocl > best_val_weighted_vsCE_ocl:
+        if cv_weighted_vsCE_O > best_val_weighted_vsCE_O:
             best_val_loss = cv_loss
             best_val_vsCE = cv_vsCE
-            best_val_weighted_vsCE_claimsize = cv_weighted_vsCE_claimsize
-            best_val_weighted_vsCE_ocl = cv_weighted_vsCE_ocl
+            best_val_weighted_vsCE_S = cv_weighted_vsCE_S
+            best_val_weighted_vsCE_O = cv_weighted_vsCE_O
             best_val_uie = cv_uie
             best_hp_comb = hp_comb
             best_weights = deepcopy(model.state_dict())
             print(f'\nnew best val_loss: {round_threshold(best_val_loss):,}, '
                   f'val_vsCE: {best_val_vsCE:.2f}%, '
-                  f'val_weighted_vsCE_claimsize: {best_val_weighted_vsCE_claimsize:.2f}%, '
-                  f'val_weighted_vsCE_ocl: {best_val_weighted_vsCE_ocl:.2f}%, '
+                  f'val_weighted_vsCE_S: {best_val_weighted_vsCE_S:.2f}%, '
+                  f'val_weighted_vsCE_O: {best_val_weighted_vsCE_O:.2f}%, '
                   f'val_uie = {best_val_uie:.2f}%\n')
         
         # appending results to dataframe
@@ -2901,8 +2901,8 @@ def cross_validate(fp_in, fp_out, fp_hp_comb, hyperparameter_grid, verbose=True,
                             'dropout': hp_comb['dropout'], 
                             'loss': round_threshold(cv_loss), 
                             'vsCE': round(cv_vsCE, 2), 
-                            'weighted_vsCE_claimsize': round(cv_weighted_vsCE_claimsize, 2),
-                            'weighted_vsCE_ocl': round(cv_weighted_vsCE_ocl, 2),
+                            'weighted_vsCE_S': round(cv_weighted_vsCE_S, 2),
+                            'weighted_vsCE_O': round(cv_weighted_vsCE_O, 2),
                             'UIE': round(cv_uie, 2)}, index=[0])
         
         row.to_csv(fp_out, mode='a', header=False, index=False)
@@ -2911,8 +2911,8 @@ def cross_validate(fp_in, fp_out, fp_hp_comb, hyperparameter_grid, verbose=True,
         print(f'\nBest hyperparameter combination: {best_hp_comb}')
         print(f'Best validation loss: {round_threshold(best_val_loss):,}')
         print(f'Best validation vsCE: {best_val_vsCE:.2f}%')
-        print(f'Best validation weighted vsCE (Claim Size): {best_val_weighted_vsCE_claimsize:.2f}%')
-        print(f'Best validation weighted vsCE (OCL): {best_val_weighted_vsCE_ocl:.2f}%')
+        print(f'Best validation weighted vsCE (S): {best_val_weighted_vsCE_S:.2f}%')
+        print(f'Best validation weighted vsCE (O): {best_val_weighted_vsCE_O:.2f}%')
         print(f'Best validation UIE: {best_val_uie:.2f}%')
 
     # saving hyperparameters to json file
@@ -3073,8 +3073,8 @@ def test_multiple_initialisations(fp_in, fp_out, iterations, verbose=True, model
         paids = actuals - ocls
 
         vsCE = get_vsCE(actuals, preds, incurreds)
-        weighted_vsCE_claimsize = get_weighted_vsCE_claimsize(actuals, preds, incurreds)
-        weighted_vsCE_ocl = get_weighted_vsCE_ocl(actuals, preds, incurreds, ocls)
+        weighted_vsCE_S = get_weighted_vsCE_S(actuals, preds, incurreds)
+        weighted_vsCE_O = get_weighted_vsCE_O(actuals, preds, incurreds, ocls)
 
         preds_val = preds[test_set.index['pred_time'] == val_date]
         actuals_val = actuals[test_set.index['pred_time'] == val_date]
@@ -3083,11 +3083,11 @@ def test_multiple_initialisations(fp_in, fp_out, iterations, verbose=True, model
         paids_val = actuals_val - ocls_val
 
         ocl_preds_val = preds_val - paids_val
-        weighted_vsCE_claimsize_val = get_weighted_vsCE_claimsize(actuals_val,
+        weighted_vsCE_S_val = get_weighted_vsCE_S(actuals_val,
                                                                    preds_val,
                                                                    incurreds_val)
         
-        weighted_vsCE_ocl_val = get_weighted_vsCE_ocl(actuals_val,
+        weighted_vsCE_O_val = get_weighted_vsCE_O(actuals_val,
                                                         preds_val,
                                                         incurreds_val,
                                                         ocls_val)
@@ -3102,11 +3102,11 @@ def test_multiple_initialisations(fp_in, fp_out, iterations, verbose=True, model
         results.append({'preds': preds,
                         'preds_val': preds_val,
                         'vsCE': vsCE,
-                        'weighted_vsCE_claimsize': weighted_vsCE_claimsize,
-                        'weighted_vsCE_ocl': weighted_vsCE_ocl,
+                        'weighted_vsCE_S': weighted_vsCE_S,
+                        'weighted_vsCE_O': weighted_vsCE_O,
                         'ocl_preds_val': ocl_preds_val, 
-                        'weighted_vsCE_claimsize_val': weighted_vsCE_claimsize_val,
-                        'weighted_vsCE_ocl_val': weighted_vsCE_ocl_val,
+                        'weighted_vsCE_S_val': weighted_vsCE_S_val,
+                        'weighted_vsCE_O_val': weighted_vsCE_O_val,
                         'MALE_preds': MALE_preds,
                         'MSLE_preds': MSLE_preds,
                         'MALE_preds_val': MALE_preds_val,
@@ -3167,23 +3167,23 @@ def test_multiple_initialisations(fp_in, fp_out, iterations, verbose=True, model
     plt.ylabel('Frequency')
     plt.show()
 
-    # Histogram of weighted vsCE (Claim Size) at the valuation date
-    plt.hist(results['weighted_vsCE_claimsize_val'], 
-             weights=(np.zeros_like(results['weighted_vsCE_claimsize_val']) + 
-                      1. / results['weighted_vsCE_claimsize_val'].size), 
+    # Histogram of weighted vsCE (S) at the valuation date
+    plt.hist(results['weighted_vsCE_S_val'], 
+             weights=(np.zeros_like(results['weighted_vsCE_S_val']) + 
+                      1. / results['weighted_vsCE_S_val'].size), 
              color='lightgreen')
     
-    plt.xlabel('$\mathrm{vsCE}_{\mathrm{ClaimSize}}$ (%)')
+    plt.xlabel('$\mathrm{vsCE}_{\mathrm{S}}$ (%)')
     plt.ylabel('Frequency')
     plt.show()
 
-    # Histogram of weighted vsCE (OCL) at the valuation date
-    plt.hist(results['weighted_vsCE_ocl_val'],
-                weights=(np.zeros_like(results['weighted_vsCE_ocl_val']) +
-                            1. / results['weighted_vsCE_ocl_val'].size),
+    # Histogram of weighted vsCE (O) at the valuation date
+    plt.hist(results['weighted_vsCE_O_val'],
+                weights=(np.zeros_like(results['weighted_vsCE_O_val']) +
+                            1. / results['weighted_vsCE_O_val'].size),
                 color='lightgreen')
     
-    plt.xlabel('$\mathrm{vsCE}_{\mathrm{OCL}}$ (%)')
+    plt.xlabel('$\mathrm{vsCE}_{\mathrm{O}}$ (%)')
     plt.ylabel('Frequency')
     plt.show()
 
@@ -3326,8 +3326,8 @@ def results_multiple_datasets(fp_py, fp_out, seed_base, max_iter):
             preds = preds * bias_correction_factor(preds_validation, actuals_validation)
             
         vsCE = get_vsCE(actuals, preds, incurreds)    
-        weighted_vsCE_claimsize = get_weighted_vsCE_claimsize(actuals, preds, incurreds)
-        weighted_vsCE_ocl = get_weighted_vsCE_ocl(actuals, preds, incurreds, ocls)
+        weighted_vsCE_S = get_weighted_vsCE_S(actuals, preds, incurreds)
+        weighted_vsCE_O = get_weighted_vsCE_O(actuals, preds, incurreds, ocls)
 
         val_date = 40
 
@@ -3354,8 +3354,8 @@ def results_multiple_datasets(fp_py, fp_out, seed_base, max_iter):
 
         # weighted vsCE at the valuation date
         vsCE_val = round_threshold(get_vsCE(actuals_val, preds_val, incurreds_val))
-        weighted_vsCE_claimsize_val = round_threshold(get_weighted_vsCE_claimsize(actuals_val, preds_val, incurreds_val))
-        weighted_vsCE_ocl_val = round_threshold(get_weighted_vsCE_ocl(actuals_val, preds_val, incurreds_val, ocls_val))
+        weighted_vsCE_S_val = round_threshold(get_weighted_vsCE_S(actuals_val, preds_val, incurreds_val))
+        weighted_vsCE_O_val = round_threshold(get_weighted_vsCE_O(actuals_val, preds_val, incurreds_val, ocls_val))
 
         # MALE and MSLE (in terms of OCL instead of ultimate claim size)
         MALE_preds = MeanAbsoluteLogError()(preds - paids, ocls)
@@ -3406,16 +3406,16 @@ def results_multiple_datasets(fp_py, fp_out, seed_base, max_iter):
                         'incurreds_val': incurreds_val,
                         'ocls_val': ocls_val,
                         'vsCE': vsCE,
-                        'weighted_vsCE_claimsize': weighted_vsCE_claimsize,
-                        'weighted_vsCE_ocl': weighted_vsCE_ocl,
+                        'weighted_vsCE_S': weighted_vsCE_S,
+                        'weighted_vsCE_O': weighted_vsCE_O,
                         'aggregate_ocls_val': aggregate_ocls_val, 
                         'ocl_preds_val': ocl_preds_val, 
                         'ocl_incurreds_val': ocl_incurreds_val, 
                         'ocl_error_preds_val': ocl_error_preds, 
                         'ocl_error_incurreds_val': ocl_error_incurreds, 
                         'vsCE_val': vsCE_val,
-                        'weighted_vsCE_claimsize_val': weighted_vsCE_claimsize_val,
-                        'weighted_vsCE_ocl_val': weighted_vsCE_ocl_val,
+                        'weighted_vsCE_S_val': weighted_vsCE_S_val,
+                        'weighted_vsCE_O_val': weighted_vsCE_O_val,
                         'MALE_preds': MALE_preds,
                         'MSLE_preds': MSLE_preds,
                         'MALE_preds_val': MALE_preds_val,
@@ -3461,25 +3461,25 @@ def plot_results_multiple_datasets(results, name_model1):
         plt.xticks([0], [name_model1])
     plt.show()
 
-    # Boxplot of weighted vsCE (Claim Size) at the valuation date
+    # Boxplot of weighted vsCE (S) at the valuation date
     fig = plt.figure(figsize=(1.2, 6.4))
-    bp_preds_model1 = box_plot(results['weighted_vsCE_claimsize_val'], [0], model_name=name_model1, showfliers=True)
+    bp_preds_model1 = box_plot(results['weighted_vsCE_S_val'], [0], model_name=name_model1, showfliers=True)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
-    plt.title('$\mathrm{vsCE}_{\mathrm{ClaimSize}}$ (%)')
+    plt.title('$\mathrm{vsCE}_{\mathrm{S}}$ (%)')
     if name_model1 is not None:
         plt.xticks([0], [name_model1])
     plt.show()
 
-    # Boxplot of weighted vsCE (OCL) at the valuation date
+    # Boxplot of weighted vsCE (O) at the valuation date
     fig = plt.figure(figsize=(1.2, 6.4))
-    bp_preds_model1 = box_plot(results['weighted_vsCE_ocl_val'], [0], model_name=name_model1, showfliers=True)
+    bp_preds_model1 = box_plot(results['weighted_vsCE_O_val'], [0], model_name=name_model1, showfliers=True)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
-    plt.title('$\mathrm{vsCE}_{\mathrm{OCL}}$ (%)')
+    plt.title('$\mathrm{vsCE}_{\mathrm{O}}$ (%)')
     if name_model1 is not None:
         plt.xticks([0], [name_model1])
     plt.show()
 
-    # Boxplots of OCL errors at valuation date
+    # Boxplots of RBNS Reserve Errors at valuation date
     fig = plt.figure(figsize=(2.4, 6.4))
     bp_preds_model1 = box_plot(results['ocl_error_preds_val'], [0], model_name=name_model1, showfliers=True)
     bp_incurreds = box_plot(results['ocl_error_incurreds_val'], [1], model_name='Case Estimates', showfliers=True)
@@ -3490,7 +3490,7 @@ def plot_results_multiple_datasets(results, name_model1):
         plt.xticks([0, 1], [name_model1, 'Case Estimates'])
     else:
         plt.xticks([0, 1], ['Predictions', 'Case Estimates'])
-    plt.title('OCLerr (%)')
+    plt.title('ResErr (%)')
     plt.show()
 
     # Boxplots of MALE and MSLE at valuation date
@@ -3592,9 +3592,9 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     results_model2 = results_multiple_datasets(fp_py, fp_out_model2, seed_base, max_iter)
 
     # printing summary statistics
-    print(f'\n{name_model1} OCL error: mean = {results_model1["ocl_error_preds_val"].mean():.2f}%, std = {results_model1["ocl_error_preds_val"].std():.2f}%')
-    print(f'{name_model2} OCL error: mean = {results_model2["ocl_error_preds_val"].mean():.2f}%, std = {results_model2["ocl_error_preds_val"].std():.2f}%')
-    print(f'Incurreds OCL error: mean = {results_model1["ocl_error_incurreds_val"].mean():.2f}%, std = {results_model1["ocl_error_incurreds_val"].std():.2f}%')
+    print(f'\n{name_model1} RBNS Reserve Error: mean = {results_model1["ocl_error_preds_val"].mean():.2f}%, std = {results_model1["ocl_error_preds_val"].std():.2f}%')
+    print(f'{name_model2} RBNS Reserve Error: mean = {results_model2["ocl_error_preds_val"].mean():.2f}%, std = {results_model2["ocl_error_preds_val"].std():.2f}%')
+    print(f'Incurreds RBNS Reserve Error: mean = {results_model1["ocl_error_incurreds_val"].mean():.2f}%, std = {results_model1["ocl_error_incurreds_val"].std():.2f}%')
 
     print(f'\n{name_model1} MALE: mean = {results_model1["MALE_preds_val"].mean():.4f}, std = {results_model1["MALE_preds_val"].std():.4f}')
     print(f'{name_model2} MALE: mean = {results_model2["MALE_preds_val"].mean():.4f}, std = {results_model2["MALE_preds_val"].std():.4f}')
@@ -3607,11 +3607,11 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     print(f'\n{name_model1} vsCE: mean = {results_model1["vsCE_val"].mean():.2f}%, std = {results_model1["vsCE_val"].std():.2f}%')
     print(f'{name_model2} vsCE: mean = {results_model2["vsCE_val"].mean():.2f}%, std = {results_model2["vsCE_val"].std():.2f}%')
 
-    print(f'\n{name_model1} weighted vsCE (Claim Size): mean = {results_model1["weighted_vsCE_claimsize_val"].mean():.2f}%, std = {results_model1["weighted_vsCE_claimsize_val"].std():.2f}%')
-    print(f'{name_model2} weighted vsCE (Claim Size): mean = {results_model2["weighted_vsCE_claimsize_val"].mean():.2f}%, std = {results_model2["weighted_vsCE_claimsize_val"].std():.2f}%')
+    print(f'\n{name_model1} weighted vsCE (S): mean = {results_model1["weighted_vsCE_S_val"].mean():.2f}%, std = {results_model1["weighted_vsCE_S_val"].std():.2f}%')
+    print(f'{name_model2} weighted vsCE (S): mean = {results_model2["weighted_vsCE_S_val"].mean():.2f}%, std = {results_model2["weighted_vsCE_S_val"].std():.2f}%')
 
-    print(f'\n{name_model1} weighted vsCE (OCL): mean = {results_model1["weighted_vsCE_ocl_val"].mean():.2f}%, std = {results_model1["weighted_vsCE_ocl_val"].std():.2f}%')
-    print(f'{name_model2} weighted vsCE (OCL): mean = {results_model2["weighted_vsCE_ocl_val"].mean():.2f}%, std = {results_model2["weighted_vsCE_ocl_val"].std():.2f}%')
+    print(f'\n{name_model1} weighted vsCE (O): mean = {results_model1["weighted_vsCE_O_val"].mean():.2f}%, std = {results_model1["weighted_vsCE_O_val"].std():.2f}%')
+    print(f'{name_model2} weighted vsCE (O): mean = {results_model2["weighted_vsCE_O_val"].mean():.2f}%, std = {results_model2["weighted_vsCE_O_val"].std():.2f}%')
 
     plot_multiple_models_by_time(results_model1, results_model2, name_model1, name_model2)
     
@@ -3624,43 +3624,43 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     plt.title('$\mathrm{vsCE}$ (%)')
     plt.show()
 
-    # Boxplot of weighted vsCE (Claim Size) at the valuation date
+    # Boxplot of weighted vsCE (S) at the valuation date
     fig = plt.figure(figsize=(2.4, 6.4))
-    bp_preds_model1 = box_plot(results_model1['weighted_vsCE_claimsize_val'], [0], model_name=name_model1, showfliers=True)
-    bp_preds_model2 = box_plot(results_model2['weighted_vsCE_claimsize_val'], [1], model_name=name_model2, showfliers=True)    
+    bp_preds_model1 = box_plot(results_model1['weighted_vsCE_S_val'], [0], model_name=name_model1, showfliers=True)
+    bp_preds_model2 = box_plot(results_model2['weighted_vsCE_S_val'], [1], model_name=name_model2, showfliers=True)    
     plt.xticks([0, 1], [name_model1, name_model2])
     plt.grid(axis='y', linestyle='--', alpha=0.7)
-    plt.title('$\mathrm{vsCE}_{\mathrm{ClaimSize}}$ (%)')
+    plt.title('$\mathrm{vsCE}_{\mathrm{S}}$ (%)')
     plt.show()
 
-    # Boxplot of weighted vsCE (OCL) at the valuation date
+    # Boxplot of weighted vsCE (O) at the valuation date
     fig = plt.figure(figsize=(2.4, 6.4))
-    bp_preds_model1 = box_plot(results_model1['weighted_vsCE_ocl_val'], [0], model_name=name_model1, showfliers=True)
-    bp_preds_model2 = box_plot(results_model2['weighted_vsCE_ocl_val'], [1], model_name=name_model2, showfliers=True)    
+    bp_preds_model1 = box_plot(results_model1['weighted_vsCE_O_val'], [0], model_name=name_model1, showfliers=True)
+    bp_preds_model2 = box_plot(results_model2['weighted_vsCE_O_val'], [1], model_name=name_model2, showfliers=True)    
     plt.xticks([0, 1], [name_model1, name_model2])
     plt.grid(axis='y', linestyle='--', alpha=0.7)
-    plt.title('$\mathrm{vsCE}_{\mathrm{OCL}}$ (%)')
+    plt.title('$\mathrm{vsCE}_{\mathrm{O}}$ (%)')
     plt.show()
 
-    # Boxplots of OCL errors at valuation date with incurreds
+    # Boxplots of RBNS Reserve Errors at valuation date with incurreds
     bp_preds_model1 = box_plot(results_model1['ocl_error_preds_val'], [0], model_name=name_model1, showfliers=True)
     bp_preds_model2 = box_plot(results_model2['ocl_error_preds_val'], [1], model_name=name_model2, showfliers=True)
     bp_incurreds = box_plot(results_model1['ocl_error_incurreds_val'], [2], model_name='Case Estimates', showfliers=True)
     plt.axhline(0, color='black', linestyle='dashed', linewidth=2)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.xticks([0, 1, 2], [name_model1, name_model2, 'Case Estimates'])
-    plt.title('OCLerr (%)')
+    plt.title('ResErr (%)')
     plt.show()
 
     ### With Incurreds 
-    # Boxplots of OCL errors at valuation date (excl. outliers)
+    # Boxplots of RBNS Reserve Errors at valuation date (excl. outliers)
     bp_preds_model1 = box_plot(results_model1['ocl_error_preds_val'], [0], model_name=name_model1, showfliers=False)
     bp_preds_model2 = box_plot(results_model2['ocl_error_preds_val'], [1], model_name=name_model2, showfliers=False)
     bp_incurreds = box_plot(results_model1['ocl_error_incurreds_val'], [2], model_name='Case Estimates', showfliers=False)
     plt.axhline(0, color='black', linestyle='dashed', linewidth=2)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.xticks([0, 1, 2], [name_model1, name_model2, 'Case Estimates'])
-    plt.title('OCLerr (%) (excl. outliers)')
+    plt.title('ResErr (%) (excl. outliers)')
     plt.show()
 
     # Boxplots of MALE and MSLE at valuation date
@@ -3681,24 +3681,24 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     plt.show()
 
     ### Without Incurreds
-    # Boxplots of OCL errors at valuation date
+    # Boxplots of RBNS Reserve Errors at valuation date
     fig = plt.figure(figsize=(2.4, 6.4))
     bp_preds_model1 = box_plot(results_model1['ocl_error_preds_val'], [0], model_name=name_model1, showfliers=True)
     bp_preds_model2 = box_plot(results_model2['ocl_error_preds_val'], [1], model_name=name_model2, showfliers=True)
     plt.axhline(0, color='black', linestyle='dashed', linewidth=2)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.xticks([0, 1], [name_model1, name_model2])
-    plt.title('OCLerr (%)')
+    plt.title('ResErr (%)')
     plt.show()
 
-    # Boxplots of OCL errors at valuation date (excl. outliers)
+    # Boxplots of RBNS Reserve Errors at valuation date (excl. outliers)
     fig = plt.figure(figsize=(2.4, 6.4))
     bp_preds_model1 = box_plot(results_model1['ocl_error_preds_val'], [0], model_name=name_model1, showfliers=False)
     bp_preds_model2 = box_plot(results_model2['ocl_error_preds_val'], [1], model_name=name_model2, showfliers=False)
     plt.axhline(0, color='black', linestyle='dashed', linewidth=2)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.xticks([0, 1], [name_model1, name_model2])
-    plt.title('OCLerr (%) (excl. outliers)')
+    plt.title('ResErr (%) (excl. outliers)')
     plt.show()
 
     # Boxplots of MALE and MSLE at valuation date
@@ -3719,7 +3719,7 @@ def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, 
     plt.show()
 
     # generating vsM1 statistics
-    vsM1_val = np.array([get_weighted_vsCE_ocl(results_model1['actuals_val'][i],
+    vsM1_val = np.array([get_weighted_vsCE_O(results_model1['actuals_val'][i],
                                                 results_model2['preds_val'][i],
                                                 results_model1['preds_val'][i],
                                                 results_model1['ocls_val'][i])
