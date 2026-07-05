@@ -238,19 +238,22 @@ median_colours = {'LSTM+': "#5D3EF8",
                   'FNN+': "#07BB43",
                   'FNN': "#F147D5",
                   'Case Estimates': "#D4B206",
+                  'FNN+ Distorted': "#95a804",
                   'Actuals': "#2BC5AB"}
 
 edge_colours = {'LSTM+': '#332288',
                 'LSTM': "#3B8BB3",
                 'FNN+': '#117733',
                 'FNN': '#AA4499',
-                'Case Estimates': "#B19A27"}
+                'Case Estimates': "#B19A27",
+                'FNN+ Distorted': "#566101"}
 
 fill_colours = {'LSTM+': "#B1A2FC",
                 'LSTM': '#88CCEE',
                 'FNN+': "#B3F7CA",
                 'FNN': "#F8B9EE",
-                'Case Estimates': "#F1E296"}
+                'Case Estimates': "#F1E296",
+                'FNN+ Distorted': "#e3f36c"}
 
 def get_median_colour(model_name):
     if model_name in median_colours.keys():
@@ -3586,10 +3589,10 @@ def plot_multiple_models_by_time(results_model1, results_model2, name_model1, na
                       name_model2=name_model2,
                       include_incurreds=False)    
 
-def test_multiple_models_multiple_datasets(fp_py, fp_out_model1, fp_out_model2, seed_base, max_iter, name_model1, name_model2):
+def test_multiple_models_multiple_datasets(fp_py_model1, fp_py_model2, fp_out_model1, fp_out_model2, seed_base, max_iter, name_model1, name_model2):
 
-    results_model1 = results_multiple_datasets(fp_py, fp_out_model1, seed_base, max_iter)
-    results_model2 = results_multiple_datasets(fp_py, fp_out_model2, seed_base, max_iter)
+    results_model1 = results_multiple_datasets(fp_py_model1, fp_out_model1, seed_base, max_iter)
+    results_model2 = results_multiple_datasets(fp_py_model2, fp_out_model2, seed_base, max_iter)
 
     # printing summary statistics
     print(f'\n{name_model1} RBNS Reserve Error: mean = {results_model1["ocl_error_preds_val"].mean():.2f}%, std = {results_model1["ocl_error_preds_val"].std():.2f}%')
