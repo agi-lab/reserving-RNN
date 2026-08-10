@@ -1082,7 +1082,7 @@ def train_network(model, train_data, hp_comb, verbose=True,
                          verbose=verbose)
 
             # Early stopping
-            min_delta = 0.0001
+            min_delta = 0.001
 
             if val_loss_list[-1] < best_val_loss - min_delta:
                 best_val_loss = val_loss_list[-1]
