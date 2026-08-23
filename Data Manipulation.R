@@ -319,3 +319,26 @@ for (i in 0:max_iter) {
   data_manipulation(fp_in, fp_out, fp_out_noInc)
 }
 print("Done!")
+
+
+# Large complexity 5 datasets with noisy case estimates
+max_iter = 50
+seed_base = 500
+
+fp_R = './Datasets/R Outputs/Noisy Case Estimates/data_noInf_cov_TRUE_seed_'
+fp_py_WithInc = './Datasets/Python Inputs/Split by time/Noisy Case Estimates/noInf_WithInc_seed_'
+fp_py_noInc = './Datasets/Python Inputs/Split by time/Noisy Case Estimates/noInf_NoInc_seed_'
+
+
+for (i in 0:max_iter) {
+  fp_in = paste0(fp_R, i + seed_base, '.csv')
+  fp_out = paste0(fp_py_WithInc, i + seed_base, '/')
+  fp_out_noInc = paste0(fp_py_noInc, i + seed_base, '/')
+  
+  print(paste0('Seed: ', i + seed_base))
+  #print(paste0('fp_in: ', fp_in))
+  #print(paste0('fp out: ', fp_out))
+  
+  data_manipulation(fp_in, fp_out, fp_out_noInc)
+}
+print("Done!")
