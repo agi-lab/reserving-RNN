@@ -9,6 +9,7 @@ from sklearn.preprocessing import StandardScaler
 import warnings
 import pickle
 import os
+from scipy.stats import wilcoxon
 
 import torch
 import torch.nn as nn
@@ -239,6 +240,7 @@ median_colours = {'LSTM+': "#5D3EF8",
                   'FNN': "#F147D5",
                   'Case Estimates': "#D4B206",
                   'FNN+ Distorted': "#95a804",
+                  'FNN+ Noisy': "#EE7733",
                   'Actuals': "#2BC5AB"}
 
 edge_colours = {'LSTM+': '#332288',
@@ -246,14 +248,16 @@ edge_colours = {'LSTM+': '#332288',
                 'FNN+': '#117733',
                 'FNN': '#AA4499',
                 'Case Estimates': "#B19A27",
-                'FNN+ Distorted': "#566101"}
+                'FNN+ Distorted': "#566101",
+                'FNN+ Noisy': "#DF5608"}
 
 fill_colours = {'LSTM+': "#B1A2FC",
                 'LSTM': '#88CCEE',
                 'FNN+': "#B3F7CA",
                 'FNN': "#F8B9EE",
                 'Case Estimates': "#F1E296",
-                'FNN+ Distorted': "#e3f36c"}
+                'FNN+ Distorted': "#e3f36c",
+                'FNN+ Noisy': "#EE9B6B"}
 
 def get_median_colour(model_name):
     if model_name in median_colours.keys():
@@ -3206,6 +3210,7 @@ def results_multiple_datasets(fp_py, fp_out, seed_base, max_iter):
 
         ocl_error_preds = round_threshold(100 * (ocl_preds_val - aggregate_ocls_val) / aggregate_ocls_val)
         ocl_error_incurreds = round_threshold(100 * (ocl_incurreds_val - aggregate_ocls_val) / aggregate_ocls_val)
+        abs_ocl_error_preds = abs(ocl_error_preds)
 
         # weighted vsCE at the valuation date
         vsCE_val = round_threshold(get_vsCE(actuals_val, preds_val, incurreds_val))
@@ -3244,6 +3249,7 @@ def results_multiple_datasets(fp_py, fp_out, seed_base, max_iter):
                         'ocl_incurreds_val': ocl_incurreds_val, 
                         'ocl_error_preds_val': ocl_error_preds, 
                         'ocl_error_incurreds_val': ocl_error_incurreds, 
+                        'abs_ocl_error_preds_val': abs_ocl_error_preds,
                         'vsCE_val': vsCE_val,
                         'weighted_vsCE_S_val': weighted_vsCE_S_val,
                         'weighted_vsCE_O_val': weighted_vsCE_O_val,
@@ -3672,7 +3678,32 @@ def test_multiple_models_multiple_datasets(fp_py_models, fp_out_models, name_mod
 
         print(
             f'{name_models[j]} vs {name_models[i]}: '
-            f'mean = {vs.mean():.2f}%,'
+            f'mean = {vs.mean():.2f}%, '
             f'std = {vs.std():.2f}%'
         )
 
+    print()
+
+    # Wilcoxon and Count statistics
+    wilcoxon_and_win_counts(results, name_models, "abs_ocl_error_preds_val")
+    wilcoxon_and_win_counts(results, name_models, "MALE_preds_val")
+    wilcoxon_and_win_counts(results, name_models, "MSLE_preds_val")
+    wilcoxon_and_win_counts(results, name_models, "weighted_vsCE_O_val")
+
+
+
+def wilcoxon_and_win_counts(results, name_models, metric):
+    for i, j in combinations(range(len(results)), 2):    
+            metric_diff = results[i][metric] - results[j][metric]
+            #print(results[i][metric])
+            #print(results[j][metric])
+            #print(metric_diff)
+    
+            print(f'{metric} {name_models[i]} < {name_models[j]}: {sum(metric_diff < 0)} times')
+            print(f'{metric} {name_models[i]} = {name_models[j]}: {sum(metric_diff == 0)} times')
+            print(f'{metric} {name_models[i]} > {name_models[j]}: {sum(metric_diff > 0)} times')
+    
+            statistic, p_value = wilcoxon(metric_diff, alternative = 'two-sided')
+            print(f'{metric} {name_models[i]} {name_models[j]} Wilcoxon two-sided Statistic: {statistic}, p-value: {p_value}')
+    
+            print()
