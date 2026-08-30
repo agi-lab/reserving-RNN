@@ -240,7 +240,7 @@ median_colours = {'LSTM+': "#5D3EF8",
                   'FNN': "#F147D5",
                   'Case Estimates': "#D4B206",
                   'FNN+ Distorted': "#95a804",
-                  'FNN+ Noisy': "#EE7733",
+                  'FNN+ Noisy': "#999999",
                   'Actuals': "#2BC5AB"}
 
 edge_colours = {'LSTM+': '#332288',
@@ -249,7 +249,7 @@ edge_colours = {'LSTM+': '#332288',
                 'FNN': '#AA4499',
                 'Case Estimates': "#B19A27",
                 'FNN+ Distorted': "#566101",
-                'FNN+ Noisy': "#DF5608"}
+                'FNN+ Noisy': "#444444"}
 
 fill_colours = {'LSTM+': "#B1A2FC",
                 'LSTM': '#88CCEE',
@@ -257,7 +257,7 @@ fill_colours = {'LSTM+': "#B1A2FC",
                 'FNN': "#F8B9EE",
                 'Case Estimates': "#F1E296",
                 'FNN+ Distorted': "#e3f36c",
-                'FNN+ Noisy': "#EE9B6B"}
+                'FNN+ Noisy': "#DDDDDD"}
 
 def get_median_colour(model_name):
     if model_name in median_colours.keys():
@@ -3211,6 +3211,7 @@ def results_multiple_datasets(fp_py, fp_out, seed_base, max_iter):
         ocl_error_preds = round_threshold(100 * (ocl_preds_val - aggregate_ocls_val) / aggregate_ocls_val)
         ocl_error_incurreds = round_threshold(100 * (ocl_incurreds_val - aggregate_ocls_val) / aggregate_ocls_val)
         abs_ocl_error_preds = abs(ocl_error_preds)
+        abs_ocl_error_incurreds = abs(ocl_error_incurreds)
 
         # weighted vsCE at the valuation date
         vsCE_val = round_threshold(get_vsCE(actuals_val, preds_val, incurreds_val))
@@ -3250,6 +3251,7 @@ def results_multiple_datasets(fp_py, fp_out, seed_base, max_iter):
                         'ocl_error_preds_val': ocl_error_preds, 
                         'ocl_error_incurreds_val': ocl_error_incurreds, 
                         'abs_ocl_error_preds_val': abs_ocl_error_preds,
+                        'abs_ocl_error_incurreds_val': abs_ocl_error_incurreds,
                         'vsCE_val': vsCE_val,
                         'weighted_vsCE_S_val': weighted_vsCE_S_val,
                         'weighted_vsCE_O_val': weighted_vsCE_O_val,
@@ -3352,6 +3354,11 @@ def plot_results_multiple_datasets(results, name_model1):
         plt.xticks([0, 1], ['Predictions', 'Case Estimates'])
     plt.title('MSLE')
     plt.show()
+
+    # Wilcoxon and win counts for model against case estimates
+    wilcoxon_and_win_counts_case_estimates(results, "abs_ocl_error_preds_val", "abs_ocl_error_incurreds_val")
+    wilcoxon_and_win_counts_case_estimates(results, "MALE_preds_val", "MALE_incurreds_val")
+    wilcoxon_and_win_counts_case_estimates(results, "MSLE_preds_val", "MSLE_incurreds_val")
 
 def test_multiple_datasets(fp_py, fp_out, seed_base, max_iter, name_model1=None):
     results = results_multiple_datasets(fp_py, fp_out, seed_base, max_iter)
@@ -3707,3 +3714,18 @@ def wilcoxon_and_win_counts(results, name_models, metric):
             print(f'{metric} {name_models[i]} {name_models[j]} Wilcoxon two-sided Statistic: {statistic}, p-value: {p_value}')
     
             print()
+
+def wilcoxon_and_win_counts_case_estimates(results, metric_model, metric_case_estimates):
+    metric_diff = results[metric_model] - results[metric_case_estimates]
+    #print(results[metric_model])
+    #print(results[metric_case_estimates])
+    #print(metric_diff)
+
+    print(f'{metric_model} Model < Case Estimates: {sum(metric_diff < 0)} times')
+    print(f'{metric_model} Model = Case Estimates: {sum(metric_diff == 0)} times')
+    print(f'{metric_model} Model > Case Estimates: {sum(metric_diff > 0)} times')
+
+    statistic, p_value = wilcoxon(metric_diff, alternative = 'two-sided')
+    print(f'{metric_model} Model Case Estimates Wilcoxon two-sided Statistic: {statistic}, p-value: {p_value}')
+
+    print()
